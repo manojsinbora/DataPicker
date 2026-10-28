@@ -46,15 +46,23 @@ def ask_interactive_inputs() -> Dict[str, Any]:
     if not q4:
         q4 = "Any"
 
-    # After Q4, repeat all four answers back in one line, then start immediately.
-    print(f"\nCity: {q1} | Area: {q2} | Total requested: {q3} | Industry: {q4}")
+    # Q5
+    q5 = input("\nQ5. Should a valid phone number be mandatory before considering a company verified? (Reply 'Mandatory' or 'Optional', default: 'Optional')\n> ").strip()
+    if not q5 or q5.lower() not in ["mandatory", "m", "required", "yes"]:
+        q5 = "Optional"
+    else:
+        q5 = "Mandatory"
+
+    # Repeat all five answers back in one line, then start immediately.
+    print(f"\nCity: {q1} | Area: {q2} | Total requested: {q3} | Industry: {q4} | Phone Requirement: {q5}")
     print("Starting research immediately...\n")
 
     return {
         "city": q1,
         "area": q2,
         "count": q3,
-        "industry": q4
+        "industry": q4,
+        "require_phone": q5.lower()
     }
 
 
@@ -63,6 +71,7 @@ def run_pipeline(
     area: str = "Whole city",
     count: int = 25,
     industry: str = "Any",
+    require_phone: str = "optional",
     batch_size: int = BATCH_SIZE,
     auto_continue: bool = False
 ):
@@ -71,7 +80,7 @@ def run_pipeline(
     processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
     exporter = ExcelExporter(city=city)
 
-    print(f"[*] Initiating continuous public candidate discovery for {city} (Area: {area}, Industry: {industry})...")
+    print(f"[*] Initiating continuous public candidate discovery for {city} (Area: {area}, Industry: {industry}, Phone Requirement: {require_phone.title()})...")
     candidate_gen = search_engine.iter_candidates(city=city, area=area, industry=industry)
 
     delivered_records: List[Dict[str, Any]] = []
@@ -98,7 +107,8 @@ def run_pipeline(
             candidate=candidate,
             target_city=city,
             target_area=area,
-            batch_no=batch_no
+            batch_no=batch_no,
+            require_phone=require_phone
         )
 
         all_source_urls.extend(sources)
@@ -125,7 +135,8 @@ def run_pipeline(
                     target_rows=count,
                     batch_no=batch_no,
                     excluded_companies=excluded_records,
-                    all_source_urls=all_source_urls
+                    all_source_urls=all_source_urls,
+                    require_phone=require_phone
                 )
 
                 # Batch summary
@@ -180,6 +191,7 @@ def main():
     parser.add_argument("--area", type=str, default="Whole city", help="Area or locality within city")
     parser.add_argument("--count", type=int, default=25, help="Number of companies to research")
     parser.add_argument("--industry", type=str, default="Any", help="Industry filter")
+    parser.add_argument("--require-phone", type=str, default="optional", choices=["optional", "mandatory"], help="Valid phone requirement (default: optional)")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE, help="Batch size (default: 25)")
     parser.add_argument("--auto-continue", action="store_true", help="Automatically proceed without pausing between batches")
 
@@ -190,7 +202,8 @@ def main():
         area = args.area
         count = args.count
         industry = args.industry
-        print(f"City: {city} | Area: {area} | Total requested: {count} | Industry: {industry}")
+        require_phone = args.require_phone
+        print(f"City: {city} | Area: {area} | Total requested: {count} | Industry: {industry} | Phone Requirement: {require_phone.title()}")
         print("Starting research immediately...\n")
     else:
         inputs = ask_interactive_inputs()
@@ -198,12 +211,14 @@ def main():
         area = inputs["area"]
         count = inputs["count"]
         industry = inputs["industry"]
+        require_phone = inputs.get("require_phone", "optional")
 
     run_pipeline(
         city=city,
         area=area,
         count=count,
         industry=industry,
+        require_phone=require_phone,
         batch_size=args.batch_size,
         auto_continue=args.auto_continue
     )

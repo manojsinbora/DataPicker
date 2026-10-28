@@ -106,6 +106,70 @@ class TestCompanyProcessor(unittest.TestCase):
         self.assertIsNotNone(exclusion)
         self.assertIn("No confirmed physical presence found in Bangalore", exclusion["reason"])
 
+    def test_process_company_mandatory_phone_excludes_when_no_phone(self):
+        """Test that Q5 mandatory phone filter excludes companies with no valid published phone."""
+        candidate = {
+            "title": "CloudNova Technologies Pvt Ltd",
+            "url": "https://cloudnova.in",
+            "domain": "cloudnova.in",
+            "snippet": "Software development in Bangalore"
+        }
+        # HTML with no phone number
+        home_html = """
+        <html>
+            <head><title>CloudNova Technologies Pvt Ltd</title></head>
+            <body>
+                <p>CloudNova Technologies Pvt Ltd, Koramangala, Bangalore 560034.</p>
+                <p>Team of 50+ engineers.</p>
+                <p>Contact: info@cloudnova.in</p>
+            </body>
+        </html>
+        """
+        self.mock_scraper.fetch_url.return_value = (home_html, b"", 200)
+
+        record, exclusion, _ = self.processor.process_company(
+            candidate=candidate,
+            target_city="Bangalore",
+            target_area="Whole city",
+            batch_no=1,
+            require_phone="mandatory"
+        )
+        self.assertIsNone(record)
+        self.assertIsNotNone(exclusion)
+        self.assertIn("mandatory phone requirement", exclusion["reason"])
+
+    def test_process_company_mandatory_phone_passes_with_valid_phone(self):
+        """Test that Q5 mandatory phone filter passes companies with a valid published phone."""
+        candidate = {
+            "title": "CloudNova Technologies Pvt Ltd",
+            "url": "https://cloudnova.in",
+            "domain": "cloudnova.in",
+            "snippet": "Software development in Bangalore"
+        }
+        # HTML with valid Bangalore landline
+        home_html = """
+        <html>
+            <head><title>CloudNova Technologies Pvt Ltd</title></head>
+            <body>
+                <p>CloudNova Technologies Pvt Ltd, Koramangala, Bangalore 560034.</p>
+                <p>Team of 50+ engineers.</p>
+                <p>Phone: +91 80 41123456 | Email: info@cloudnova.in</p>
+            </body>
+        </html>
+        """
+        self.mock_scraper.fetch_url.return_value = (home_html, b"", 200)
+
+        record, exclusion, _ = self.processor.process_company(
+            candidate=candidate,
+            target_city="Bangalore",
+            target_area="Whole city",
+            batch_no=1,
+            require_phone="mandatory"
+        )
+        self.assertIsNone(exclusion)
+        self.assertIsNotNone(record)
+        self.assertIn("41123456", record["Company public phone number"])
+
 
 if __name__ == "__main__":
     unittest.main()

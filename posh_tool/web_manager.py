@@ -43,6 +43,7 @@ class WebTaskManager:
         self.area = "Whole city"
         self.target_count = 25
         self.industry = "Any"
+        self.require_phone = "optional"
         self.batch_size = BATCH_SIZE
         self.auto_continue = True
 
@@ -74,6 +75,7 @@ class WebTaskManager:
         area: str = "Whole city",
         count: int = 25,
         industry: str = "Any",
+        require_phone: str = "optional",
         batch_size: int = BATCH_SIZE,
         auto_continue: bool = True
     ) -> bool:
@@ -88,6 +90,8 @@ class WebTaskManager:
             self.area = area.strip() if area.strip() else "Whole city"
             self.target_count = max(1, int(count))
             self.industry = industry.strip() if industry.strip() else "Any"
+            req_clean = require_phone.strip().lower() if require_phone else "optional"
+            self.require_phone = req_clean if req_clean in ["mandatory", "optional"] else "optional"
             self.batch_size = max(1, int(batch_size))
             self.auto_continue = bool(auto_continue)
 
@@ -103,7 +107,7 @@ class WebTaskManager:
             self.excel_filename = exporter.filename
             self.excel_path = os.path.abspath(exporter.filename)
 
-        self.log(f"Starting research: City='{self.city}', Area='{self.area}', Target={self.target_count}, Industry='{self.industry}'")
+        self.log(f"Starting research: City='{self.city}', Area='{self.area}', Target={self.target_count}, Industry='{self.industry}', Phone Requirement='{self.require_phone.title()}'")
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
         return True
@@ -146,6 +150,7 @@ class WebTaskManager:
                 "area": self.area,
                 "target_count": self.target_count,
                 "industry": self.industry,
+                "require_phone": self.require_phone,
                 "delivered_count": total_delivered,
                 "batch_no": self.batch_no,
                 "excel_filename": self.excel_filename,
@@ -184,7 +189,8 @@ class WebTaskManager:
                 target_rows=self.target_count,
                 batch_no=1,
                 excluded_companies=[],
-                all_source_urls=[]
+                all_source_urls=[],
+                require_phone=self.require_phone
             )
             with self.state_lock:
                 self.excel_path = init_path
@@ -228,7 +234,8 @@ class WebTaskManager:
                         candidate=candidate,
                         target_city=self.city,
                         target_area=self.area,
-                        batch_no=self.batch_no
+                        batch_no=self.batch_no,
+                        require_phone=self.require_phone
                     )
                 except Exception as comp_err:
                     logger.warning(f"Error processing candidate {domain}: {comp_err}")
@@ -253,7 +260,8 @@ class WebTaskManager:
                             target_rows=self.target_count,
                             batch_no=self.batch_no,
                             excluded_companies=self.excluded,
-                            all_source_urls=self.sources
+                            all_source_urls=self.sources,
+                            require_phone=self.require_phone
                         )
                     except Exception:
                         pass
@@ -273,7 +281,8 @@ class WebTaskManager:
                         target_rows=self.target_count,
                         batch_no=self.batch_no,
                         excluded_companies=self.excluded,
-                        all_source_urls=self.sources
+                        all_source_urls=self.sources,
+                        require_phone=self.require_phone
                     )
                     with self.state_lock:
                         self.excel_path = saved_path
@@ -329,7 +338,8 @@ class WebTaskManager:
                     target_rows=self.target_count,
                     batch_no=self.batch_no,
                     excluded_companies=self.excluded,
-                    all_source_urls=self.sources
+                    all_source_urls=self.sources,
+                    require_phone=self.require_phone
                 )
                 with self.state_lock:
                     self.excel_path = os.path.abspath(final_path)

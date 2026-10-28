@@ -37,7 +37,8 @@ class ExcelExporter:
         target_rows: int,
         batch_no: int,
         excluded_companies: List[Dict[str, str]],
-        all_source_urls: List[str]
+        all_source_urls: List[str],
+        require_phone: str = "optional"
     ) -> str:
         """
         Creates or appends to the Excel file, saving all batches into the SAME file.
@@ -141,7 +142,8 @@ class ExcelExporter:
             total_delivered=total_delivered,
             start_date=self.date_str,
             excluded_companies=excluded_companies,
-            all_source_urls=all_source_urls
+            all_source_urls=all_source_urls,
+            require_phone=require_phone
         )
 
         # Save workbook
@@ -199,7 +201,8 @@ class ExcelExporter:
         total_delivered: int,
         start_date: str,
         excluded_companies: List[Dict[str, str]],
-        all_source_urls: List[str]
+        all_source_urls: List[str],
+        require_phone: str = "optional"
     ):
         """
         Populates Sheet 2 "Notes & Sources" according to exact specifications.
@@ -223,6 +226,7 @@ class ExcelExporter:
             ("City", city),
             ("Area / Locality", area),
             ("Industry Filter", industry),
+            ("Phone Requirement", require_phone.title() if require_phone else "Optional"),
             ("Row Target", target_rows),
             ("Rows Delivered So Far", total_delivered),
             ("Research Start Date", start_date),

@@ -112,11 +112,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const selectPhoneReq = document.getElementById("select-phone-req");
     const payload = {
       city: inputCity.value.trim(),
       area: inputArea.value.trim() || "Whole city",
       count: parseInt(inputCount.value, 10) || 25,
       industry: inputIndustry.value.trim() || "Any",
+      require_phone: selectPhoneReq ? selectPhoneReq.value : "optional",
       batch_size: 25,
       auto_continue: checkAutoContinue.checked
     };

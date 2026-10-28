@@ -28,6 +28,9 @@ def start_task():
     area = data.get("area", "Whole city").strip()
     count = data.get("count", 25)
     industry = data.get("industry", "Any").strip()
+    require_phone = data.get("require_phone", "optional").strip().lower()
+    if require_phone not in ["mandatory", "optional"]:
+        require_phone = "optional"
     batch_size = data.get("batch_size", 25)
     auto_continue = data.get("auto_continue", True)
 
@@ -46,6 +49,7 @@ def start_task():
         area=area,
         count=count,
         industry=industry,
+        require_phone=require_phone,
         batch_size=batch_size,
         auto_continue=auto_continue
     )
@@ -98,7 +102,7 @@ def download_file(filename):
 @app.route("/api/download-latest", methods=["GET"])
 def download_latest():
     status = manager.get_status()
-    if status.get("excel_path") and os.path.exists(status["excel_path"]):
+    if status.get("excel_path") and os.path.exists(status["excel_path"]) and os.path.getsize(status["excel_path"]) > 0:
         return send_file(
             status["excel_path"],
             as_attachment=True,
@@ -106,8 +110,11 @@ def download_latest():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    # Look for any POSH_IC_Contacts_*.xlsx file
-    xlsx_files = [f for f in os.listdir(".") if f.startswith("POSH_IC_Contacts_") and f.endswith(".xlsx")]
+    # Look for any POSH_IC_Contacts_*.xlsx file with non-zero size
+    xlsx_files = [
+        f for f in os.listdir(".") 
+        if f.startswith("POSH_IC_Contacts_") and f.endswith(".xlsx") and os.path.getsize(f) > 0
+    ]
     if xlsx_files:
         latest_file = max(xlsx_files, key=os.path.getmtime)
         return send_file(

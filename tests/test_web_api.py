@@ -3,6 +3,7 @@ Unit tests for web_app.py Flask API routes and Task Manager.
 """
 
 import unittest
+from unittest.mock import patch
 import json
 from posh_tool.web_app import app
 from posh_tool.web_manager import WebTaskManager
@@ -41,6 +42,18 @@ class TestWebAPI(unittest.TestCase):
         self.assertEqual(res.status_code, 400)
         data = json.loads(res.data)
         self.assertFalse(data["success"])
+
+    @patch.object(WebTaskManager, "start_task", return_value=True)
+    def test_start_with_require_phone(self, mock_start):
+        """Test POST /api/start accepts require_phone parameter."""
+        res = self.app.post(
+            "/api/start",
+            data=json.dumps({"city": "Bangalore", "count": 25, "require_phone": "mandatory"}),
+            content_type="application/json"
+        )
+        self.assertEqual(res.status_code, 200)
+        mock_start.assert_called_once()
+        self.assertEqual(mock_start.call_args[1]["require_phone"], "mandatory")
 
     def test_stop_route(self):
         """Test POST /api/stop gracefully handles stop request."""

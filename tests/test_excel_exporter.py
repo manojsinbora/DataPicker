@@ -131,6 +131,7 @@ class TestExcelExporter(unittest.TestCase):
         cell_vals = [cell.value for row in ws_notes.iter_rows() for cell in row if cell.value]
         self.assertTrue(any("PROJECT METADATA" in str(v) for v in cell_vals))
         self.assertTrue(any("RUNNING GAPS SUMMARY" in str(v) for v in cell_vals))
+        self.assertTrue(any("Phone Requirement" in str(v) for v in cell_vals))
         self.assertTrue(any("Excluded Coaching Center" in str(v) for v in cell_vals))
 
 

@@ -142,6 +142,16 @@
                 <option value="Retail / E-commerce">
               </datalist>
             </div>
+
+            <!-- Q5: Valid Phone Requirement -->
+            <div class="field">
+              <label for="select-phone-req">Q5. Valid Phone Requirement</label>
+              <span id="phone-req-hint" class="hint">Filter before company verification</span>
+              <select id="select-phone-req" name="require_phone" aria-describedby="phone-req-hint">
+                <option value="optional" selected>Optional (Include even if phone is N/A)</option>
+                <option value="mandatory">Mandatory (Must have verified Indian phone)</option>
+              </select>
+            </div>
           </div>
 
           <!-- Configuration Row -->

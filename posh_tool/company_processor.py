@@ -29,8 +29,9 @@ class CompanyProcessor:
         self,
         candidate: Dict[str, str],
         target_city: str,
-        target_area: str,
-        batch_no: int
+        target_area: str = "Whole city",
+        batch_no: int = 1,
+        require_phone: str = "optional"
     ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, str]], List[str]]:
         """
         Processes a candidate company.
@@ -121,6 +122,7 @@ class CompanyProcessor:
                 employee_evidence = "Corporate entity operations confirmed on company site"
 
         # 10. General Company Contacts (strictly validated Indian numbers, prefer target city landline)
+        notes: List[str] = []
         company_phone, company_email = self.extractor.extract_company_contacts(contact_text or home_text, target_city=target_city)
         if company_phone != NOT_AVAILABLE:
             if not is_valid_indian_phone(company_phone):
@@ -157,7 +159,6 @@ class CompanyProcessor:
         ic_members_str = NOT_AVAILABLE
         ic_email = NOT_AVAILABLE
         ic_phone = NOT_AVAILABLE
-        notes = []
 
         # Check existing internal links first
         candidate_posh_links = page_links["ic_links"] + [p for p in page_links["pdf_links"] if any(k in p.lower() for k in ["posh", "harassment", "ic", "code", "conduct", "grievance", "brsr"])]
@@ -227,6 +228,19 @@ class CompanyProcessor:
             hr_phone = NOT_AVAILABLE
         if company_phone != NOT_AVAILABLE and not is_valid_indian_phone(company_phone):
             company_phone = NOT_AVAILABLE
+
+        # Q5: Valid Phone Number Requirement (Mandatory vs Optional)
+        if require_phone and require_phone.lower() == "mandatory":
+            has_valid_phone = (
+                company_phone != NOT_AVAILABLE or 
+                ic_phone != NOT_AVAILABLE or 
+                hr_phone != NOT_AVAILABLE
+            )
+            if not has_valid_phone:
+                return None, {
+                    "name": company_name,
+                    "reason": "No valid Indian phone number published on company website or documents (mandatory phone requirement)"
+                }, source_urls
 
         if not notes:
             notes_str = NOT_AVAILABLE
