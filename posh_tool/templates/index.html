@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POSH IC & Company Research Hub (Zero AI)</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="header-titles">
+          <div class="brand-row">
+            <h1>POSH IC & Compliance Research Hub</h1>
+            <span class="badge badge-zero-ai">Zero AI / Deterministic</span>
+            <span id="system-status-badge" class="badge badge-status badge-idle">Idle</span>
+          </div>
+          <p class="subtitle">
+            Verified public discovery of POSH Internal Committee (IC) details, HR contacts, and company information under India's POSH Act, 2013.
+          </p>
+        </div>
+        <div class="header-actions">
+          <button id="btn-download-top" class="btn btn-download" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Excel (.xlsx)
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Input Panel & Live Controls -->
+      <section class="card form-card" aria-labelledby="query-parameters-heading">
+        <div class="card-header">
+          <h2 id="query-parameters-heading">Step 1 — Research Parameters</h2>
+          <span class="step-guide">Strict Public Sources Only • Verbatim Extraction</span>
+        </div>
+        
+        <form id="research-form" novalidate>
+          <div class="form-grid">
+            <!-- Q1: City -->
+            <div class="field">
+              <label for="input-city">Q1. Target City <span class="required">*</span></label>
+              <span id="city-hint" class="hint">City to research</span>
+              <input 
+                type="text" 
+                id="input-city" 
+                name="city" 
+                required 
+                placeholder="e.g., Bangalore, Mumbai, Pune, Delhi NCR"
+                list="city-suggestions"
+                autocomplete="address-level2"
+                aria-describedby="city-hint"
+                aria-errormessage="city-error"
+              >
+              <datalist id="city-suggestions">
+                <option value="Bangalore">
+                <option value="Mumbai">
+                <option value="Pune">
+                <option value="Delhi NCR">
+                <option value="Hyderabad">
+                <option value="Chennai">
+                <option value="Gurgaon">
+                <option value="Noida">
+                <option value="Kolkata">
+                <option value="Ahmedabad">
+              </datalist>
+              <div id="city-error" class="error-msg">
+                <span aria-hidden="true">⚠️</span> Please enter a target city.
+              </div>
+            </div>
+
+            <!-- Q2: Area -->
+            <div class="field">
+              <label for="input-area">Q2. Specific Area / Locality</label>
+              <span id="area-hint" class="hint">Leave as 'Whole city' if none</span>
+              <input 
+                type="text" 
+                id="input-area" 
+                name="area" 
+                value="Whole city"
+                placeholder="e.g., Whole city, Whitefield, BKC, Hinjewadi"
+                aria-describedby="area-hint"
+              >
+            </div>
+
+            <!-- Q3: Total Companies -->
+            <div class="field">
+              <label for="input-count">Q3. Target Companies Count <span class="required">*</span></label>
+              <span id="count-hint" class="hint">Batched in groups of 25</span>
+              <input 
+                type="number" 
+                id="input-count" 
+                name="count" 
+                min="1" 
+                max="500" 
+                value="25" 
+                required
+                aria-describedby="count-hint"
+                aria-errormessage="count-error"
+              >
+              <div id="count-error" class="error-msg">
+                <span aria-hidden="true">⚠️</span> Please enter a valid number (1 to 500).
+              </div>
+            </div>
+
+            <!-- Q4: Industry -->
+            <div class="field">
+              <label for="input-industry">Q4. Industry Filter</label>
+              <span id="industry-hint" class="hint">Filter by sector</span>
+              <input 
+                type="text" 
+                id="input-industry" 
+                name="industry" 
+                value="Any" 
+                list="industry-suggestions"
+                placeholder="e.g., Any, IT / Software, Manufacturing, BFSI"
+                aria-describedby="industry-hint"
+              >
+              <datalist id="industry-suggestions">
+                <option value="Any">
+                <option value="IT / Software / SaaS">
+                <option value="Manufacturing / Engineering">
+                <option value="BFSI / Finance / Fintech">
+                <option value="Healthcare / Pharma">
+                <option value="Retail / E-commerce">
+              </datalist>
+            </div>
+          </div>
+
+          <!-- Configuration Row -->
+          <div class="form-options">
+            <label class="toggle-control">
+              <input type="checkbox" id="check-auto-continue" checked>
+              <span class="toggle-label">Auto-continue batches until target reached</span>
+            </label>
+            <div class="batch-size-info">
+              <span>Batch size: <strong>25 companies</strong></span>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="form-actions">
+            <button type="submit" id="btn-start" class="btn btn-primary">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Start Research
+            </button>
+            <button type="button" id="btn-continue" class="btn btn-warning" style="display: none;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Continue Next Batch
+            </button>
+            <button type="button" id="btn-stop" class="btn btn-danger" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+              Stop
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Metric Cards / Gaps Summary -->
+      <section class="metrics-grid" aria-label="Research Performance Metrics">
+        <div class="metric-card">
+          <div class="metric-title">Verified Companies</div>
+          <div class="metric-value" id="val-delivered">0 / 0</div>
+          <div class="progress-bar-container">
+            <div id="progress-bar" class="progress-bar" style="inline-size: 0%;"></div>
+          </div>
+          <div class="metric-meta" id="val-progress-pct">0% of target completed</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-title">IC Emails Published</div>
+          <div class="metric-value" id="val-ic-email">0</div>
+          <div class="metric-meta" id="val-ic-email-pct">0.0% completion rate</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-title">IC Policy / Notices Found</div>
+          <div class="metric-value" id="val-ic-doc">0</div>
+          <div class="metric-meta" id="val-ic-doc-pct">0.0% completion rate</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-title">HR Contacts Published</div>
+          <div class="metric-value" id="val-hr-contact">0</div>
+          <div class="metric-meta" id="val-hr-contact-pct">0.0% completion rate</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-title">Excluded Entities</div>
+          <div class="metric-value" id="val-excluded">0</div>
+          <div class="metric-meta">Coaching, coworking, staffing</div>
+        </div>
+      </section>
+
+      <!-- Real-time Console Log -->
+      <section class="card console-card" aria-labelledby="live-activity-heading">
+        <div class="card-header console-header">
+          <div class="console-title-group">
+            <h2 id="live-activity-heading">Live Activity Log</h2>
+            <span class="pulse-indicator"></span>
+          </div>
+          <div class="console-controls">
+            <button id="btn-clear-console" class="btn btn-sm btn-ghost">Clear Log</button>
+            <button id="btn-toggle-console" class="btn btn-sm btn-ghost">Collapse</button>
+          </div>
+        </div>
+        <div id="console-output" class="console-output" role="log" aria-live="polite">
+          <div class="log-entry log-info">[System ready] Ready to begin research. Enter city and parameters above.</div>
+        </div>
+      </section>
+
+      <!-- Data Explorer Tabs -->
+      <section class="card results-card" aria-labelledby="data-explorer-heading">
+        <div class="card-header results-header">
+          <div class="tabs-container" role="tablist">
+            <button class="tab-btn active" role="tab" id="tab-btn-companies" aria-selected="true" aria-controls="tab-companies">
+              Verified Companies (<span id="count-badge-companies">0</span>)
+            </button>
+            <button class="tab-btn" role="tab" id="tab-btn-excluded" aria-selected="false" aria-controls="tab-excluded">
+              Excluded Entities (<span id="count-badge-excluded">0</span>)
+            </button>
+            <button class="tab-btn" role="tab" id="tab-btn-sources" aria-selected="false" aria-controls="tab-sources">
+              Public Sources (<span id="count-badge-sources">0</span>)
+            </button>
+          </div>
+          <div class="results-actions">
+            <input type="search" id="filter-input" placeholder="Search in results..." aria-label="Search verified companies">
+            <button id="btn-download-bottom" class="btn btn-sm btn-download" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 1: Companies (21 Mandatory Columns) -->
+        <div class="tab-panel active" id="tab-companies" role="tabpanel" aria-labelledby="tab-btn-companies">
+          <!-- Responsive Table Container following modern web guidance -->
+          <div tabindex="0" role="region" aria-labelledby="companies-table-caption" class="table-wrapper">
+            <table id="companies-table">
+              <caption id="companies-table-caption" class="sr-only">Verified Companies and POSH IC Details</caption>
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Company Name</th>
+                  <th scope="col">Legal Form</th>
+                  <th scope="col">Address with PIN</th>
+                  <th scope="col">Website</th>
+                  <th scope="col">Public Phone</th>
+                  <th scope="col">Public Email</th>
+                  <th scope="col">POSH / IC Web Page</th>
+                  <th scope="col">IC Document Link</th>
+                  <th scope="col">Where IC Found</th>
+                  <th scope="col">IC Presiding Officer / Members</th>
+                  <th scope="col">IC Email ID</th>
+                  <th scope="col">IC Phone Number</th>
+                  <th scope="col">HR Contact Name</th>
+                  <th scope="col">HR Email ID</th>
+                  <th scope="col">HR Phone Number</th>
+                  <th scope="col">Employee Evidence</th>
+                  <th scope="col">Source URL(s)</th>
+                  <th scope="col">Date Checked</th>
+                  <th scope="col">Batch No.</th>
+                  <th scope="col">Notes</th>
+                </tr>
+              </thead>
+              <tbody id="companies-table-body">
+                <tr class="empty-row">
+                  <td colspan="21" class="text-center">No companies gathered yet. Start a research task above to populate.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 2: Excluded Entities -->
+        <div class="tab-panel" id="tab-excluded" role="tabpanel" aria-labelledby="tab-btn-excluded">
+          <div tabindex="0" role="region" aria-labelledby="excluded-table-caption" class="table-wrapper">
+            <table id="excluded-table">
+              <caption id="excluded-table-caption" class="sr-only">Companies Checked and Excluded</caption>
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Entity / Candidate Name</th>
+                  <th scope="col">Reason for Disqualification</th>
+                </tr>
+              </thead>
+              <tbody id="excluded-table-body">
+                <tr class="empty-row">
+                  <td colspan="3" class="text-center">No excluded companies recorded yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 3: Sources -->
+        <div class="tab-panel" id="tab-sources" role="tabpanel" aria-labelledby="tab-btn-sources">
+          <div class="sources-list-container">
+            <ul id="sources-list" class="sources-list">
+              <li class="empty-item">No sources collected yet.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>
+        Complies strictly with India's POSH Act, 2013 rules & guidelines. All records gathered strictly from public websites and official reports.
+      </p>
+    </footer>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+
