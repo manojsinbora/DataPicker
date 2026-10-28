@@ -16,6 +16,7 @@
             <h1>POSH IC & Compliance Research Hub</h1>
             <span class="badge badge-zero-ai">Zero AI / Deterministic</span>
             <span id="system-status-badge" class="badge badge-status badge-idle">Idle</span>
+            <span id="header-progress-badge" class="badge badge-progress">0%</span>
           </div>
           <p class="subtitle">
             Verified public discovery of POSH Internal Committee (IC) details, HR contacts, and company information under India's POSH Act, 2013.
@@ -31,6 +32,19 @@
     </header>
 
     <main class="main-content">
+      <!-- Status & Error Alert Banner (Guarantees Excel download even if error occurs) -->
+      <aside id="task-alert-banner" class="alert-banner alert-warning" style="display: none;" role="alert">
+        <div class="alert-icon" aria-hidden="true">ℹ️</div>
+        <div class="alert-body">
+          <strong id="alert-banner-title">Notice</strong>
+          <p id="alert-banner-msg">All verified companies gathered so far have been safely saved to Excel.</p>
+        </div>
+        <button type="button" id="btn-download-alert" class="btn btn-sm btn-download">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Available Excel
+        </button>
+      </aside>
+
       <!-- Input Panel & Live Controls -->
       <section class="card form-card" aria-labelledby="query-parameters-heading">
         <div class="card-header">
@@ -161,9 +175,15 @@
 
       <!-- Metric Cards / Gaps Summary -->
       <section class="metrics-grid" aria-label="Research Performance Metrics">
-        <div class="metric-card">
-          <div class="metric-title">Verified Companies</div>
-          <div class="metric-value" id="val-delivered">0 / 0</div>
+        <div class="metric-card metric-card-primary">
+          <div class="metric-header-row">
+            <div class="metric-title">Verified Companies</div>
+            <span id="badge-pct-large" class="percentage-pill">0%</span>
+          </div>
+          <div class="metric-value-row">
+            <div class="metric-value" id="val-delivered">0 / 0</div>
+            <div class="metric-pct-display" id="val-progress-pct-bold">0.0%</div>
+          </div>
           <div class="progress-bar-container">
             <div id="progress-bar" class="progress-bar" style="inline-size: 0%;"></div>
           </div>
@@ -227,6 +247,7 @@
             </button>
           </div>
           <div class="results-actions">
+            <span id="results-pct-badge" class="badge badge-pct-subtle">0% Complete</span>
             <input type="search" id="filter-input" placeholder="Search in results..." aria-label="Search verified companies">
             <button id="btn-download-bottom" class="btn btn-sm btn-download" disabled>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

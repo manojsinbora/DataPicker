@@ -49,6 +49,20 @@ class TestWebAPI(unittest.TestCase):
         data = json.loads(res.data)
         self.assertIn("success", data)
 
+    def test_download_latest_always_available(self):
+        """
+        REGRESSION TEST:
+        Verify that even on fresh state or error, /api/download-latest delivers a valid .xlsx file.
+        """
+        res = self.app.get("/api/download-latest")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(
+            res.mimetype,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        self.assertGreater(len(res.data), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()
+

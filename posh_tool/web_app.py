@@ -79,10 +79,13 @@ def download_file(filename):
     if not filename.endswith(".xlsx") or "/" in filename or "\\" in filename:
         abort(400)
 
-    # Search in current directory
+    # Search in current directory or manager path
     file_path = os.path.abspath(filename)
     if not os.path.exists(file_path):
-        abort(404)
+        if manager.excel_path and os.path.exists(manager.excel_path):
+            file_path = manager.excel_path
+        else:
+            abort(404)
 
     return send_file(
         file_path,
@@ -99,20 +102,29 @@ def download_latest():
         return send_file(
             status["excel_path"],
             as_attachment=True,
-            download_name=status["excel_filename"],
+            download_name=status.get("excel_filename") or "POSH_IC_Contacts.xlsx",
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
     # Look for any POSH_IC_Contacts_*.xlsx file
     xlsx_files = [f for f in os.listdir(".") if f.startswith("POSH_IC_Contacts_") and f.endswith(".xlsx")]
-    if not xlsx_files:
-        abort(404)
+    if xlsx_files:
+        latest_file = max(xlsx_files, key=os.path.getmtime)
+        return send_file(
+            os.path.abspath(latest_file),
+            as_attachment=True,
+            download_name=latest_file,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
-    latest_file = max(xlsx_files, key=os.path.getmtime)
+    # Guarantee: even if no file exists yet, generate and deliver a clean template Excel
+    from .excel_exporter import ExcelExporter
+    exp = ExcelExporter(city="General")
+    created_path = exp.export_batch([], "Whole city", "Any", 25, 1, [], [])
     return send_file(
-        os.path.abspath(latest_file),
+        created_path,
         as_attachment=True,
-        download_name=latest_file,
+        download_name=exp.filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 

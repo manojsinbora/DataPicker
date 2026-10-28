@@ -17,8 +17,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnStop = document.getElementById("btn-stop");
   const btnDownloadTop = document.getElementById("btn-download-top");
   const btnDownloadBottom = document.getElementById("btn-download-bottom");
+  const btnDownloadAlert = document.getElementById("btn-download-alert");
 
   const badgeStatus = document.getElementById("system-status-badge");
+  const headerProgressBadge = document.getElementById("header-progress-badge");
+  const badgePctLarge = document.getElementById("badge-pct-large");
+  const valProgressPctBold = document.getElementById("val-progress-pct-bold");
+  const resultsPctBadge = document.getElementById("results-pct-badge");
+
+  const taskAlertBanner = document.getElementById("task-alert-banner");
+  const alertBannerTitle = document.getElementById("alert-banner-title");
+  const alertBannerMsg = document.getElementById("alert-banner-msg");
+
   const valDelivered = document.getElementById("val-delivered");
   const progressBar = document.getElementById("progress-bar");
   const valProgressPct = document.getElementById("val-progress-pct");
@@ -174,6 +184,9 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   btnDownloadTop.addEventListener("click", triggerDownload);
   btnDownloadBottom.addEventListener("click", triggerDownload);
+  if (btnDownloadAlert) {
+    btnDownloadAlert.addEventListener("click", triggerDownload);
+  }
 
   // Filter Table
   filterInput.addEventListener("input", () => {
@@ -224,14 +237,60 @@ document.addEventListener("DOMContentLoaded", () => {
     badgeStatus.textContent = data.status.toUpperCase();
     badgeStatus.className = `badge badge-status badge-${data.status}`;
 
-    // Metrics
+    // Metrics & Progress Calculations
     const delivered = data.delivered_count || 0;
     const target = data.target_count || 0;
     valDelivered.textContent = `${delivered} / ${target}`;
 
-    const pct = target > 0 ? Math.min(100, Math.round((delivered / target) * 100)) : 0;
-    progressBar.style.inlineSize = `${pct}%`;
-    valProgressPct.textContent = `${pct}% of target completed (Batch ${data.batch_no || 1})`;
+    const pctFloat = target > 0 ? (delivered / target) * 100 : 0;
+    const pctInt = Math.min(100, Math.round(pctFloat));
+    const pctStr = `${pctInt}%`;
+    const pctDetailedStr = `${pctFloat.toFixed(1)}%`;
+
+    // Update all progress percentage displays in HTML
+    if (progressBar) progressBar.style.inlineSize = `${pctInt}%`;
+    if (valProgressPct) valProgressPct.textContent = `${pctDetailedStr} of target completed (Batch ${data.batch_no || 1})`;
+    if (headerProgressBadge) {
+      headerProgressBadge.textContent = `${pctInt}% Complete`;
+      headerProgressBadge.style.display = target > 0 ? "inline-flex" : "none";
+    }
+    if (badgePctLarge) badgePctLarge.textContent = pctStr;
+    if (valProgressPctBold) valProgressPctBold.textContent = pctDetailedStr;
+    if (resultsPctBadge) resultsPctBadge.textContent = `${pctInt}% Complete (${delivered}/${target})`;
+
+    // Live Browser Tab Title with Progress Percentage
+    if (data.status === "running") {
+      document.title = `(${pctInt}%) POSH IC Research Hub`;
+    } else if (data.status === "completed") {
+      document.title = `(100% Done) POSH IC Research Hub`;
+    } else if (data.status === "paused") {
+      document.title = `(Paused ${pctInt}%) POSH IC Research Hub`;
+    } else if (data.status === "error") {
+      document.title = `(Interrupted - Excel Saved) POSH IC Research Hub`;
+    } else {
+      document.title = `POSH IC & Compliance Research Hub (Zero AI)`;
+    }
+
+    // Alert Banner handling (Guarantees Excel is always accessible even on failure/stop)
+    if (taskAlertBanner) {
+      if (data.status === "error") {
+        taskAlertBanner.className = "alert-banner alert-danger";
+        if (alertBannerTitle) alertBannerTitle.textContent = "Research Interrupted";
+        if (alertBannerMsg) {
+          alertBannerMsg.textContent = `${data.error_message || "An issue occurred."} All ${delivered} verified companies gathered so far are safely preserved in Excel.`;
+        }
+        taskAlertBanner.style.display = "flex";
+      } else if (data.status === "stopped") {
+        taskAlertBanner.className = "alert-banner alert-warning";
+        if (alertBannerTitle) alertBannerTitle.textContent = "Research Paused / Stopped";
+        if (alertBannerMsg) {
+          alertBannerMsg.textContent = `Search stopped by user. All ${delivered} verified companies gathered so far are safely preserved in Excel.`;
+        }
+        taskAlertBanner.style.display = "flex";
+      } else {
+        taskAlertBanner.style.display = "none";
+      }
+    }
 
     if (data.gaps) {
       const icEmailFound = data.gaps.ic_email?.found || 0;
@@ -249,13 +308,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     valExcluded.textContent = data.excluded_count || 0;
 
-    // Excel file download
-    if (data.excel_exists) {
+    // Excel file download: ALWAYS enabled if file exists or if rows were verified
+    if (data.excel_exists || delivered > 0) {
       currentDownloadFilename = data.excel_filename;
       btnDownloadTop.disabled = false;
       btnDownloadBottom.disabled = false;
-      btnDownloadTop.title = `Download ${data.excel_filename}`;
-      btnDownloadBottom.title = `Download ${data.excel_filename}`;
+      if (btnDownloadAlert) btnDownloadAlert.disabled = false;
+
+      const downloadLabel = delivered > 0 
+        ? `Download Excel (${delivered} Saved)` 
+        : `Download Excel (.xlsx)`;
+
+      btnDownloadTop.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${downloadLabel}`;
+      
+      btnDownloadBottom.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        ${downloadLabel}`;
+
+      btnDownloadTop.title = `Download ${data.excel_filename || 'Excel workbook'}`;
+      btnDownloadBottom.title = `Download ${data.excel_filename || 'Excel workbook'}`;
     }
 
     // Append Logs

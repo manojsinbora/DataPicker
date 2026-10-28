@@ -168,13 +168,28 @@ class WebTaskManager:
             }
 
     def _worker_loop(self):
+        exporter = ExcelExporter(city=self.city)
         try:
             search_engine = SearchEngine()
             scraper = WebScraper()
             processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
-            exporter = ExcelExporter(city=self.city)
+
+            # Immediately initialize the Excel workbook on disk so it is downloadable from second 0
+            init_path = exporter.export_batch(
+                new_companies=[],
+                area=self.area,
+                industry=self.industry,
+                target_rows=self.target_count,
+                batch_no=1,
+                excluded_companies=[],
+                all_source_urls=[]
+            )
+            with self.state_lock:
+                self.excel_path = init_path
+                self.excel_filename = exporter.filename
 
             self.log(f"Initiating continuous public discovery for {self.city} (Area: {self.area}, Industry: {self.industry})...")
+            self.log(f"Initialized output file: {exporter.filename} (ready for instant download)")
 
             candidate_gen = search_engine.iter_candidates(
                 city=self.city,
@@ -205,12 +220,18 @@ class WebTaskManager:
                 candidate_idx += 1
                 self.log(f"[{current_count + 1}/{self.target_count}] Checking: {candidate['title']} ({domain})...")
 
-                record, exclusion, sources = processor.process_company(
-                    candidate=candidate,
-                    target_city=self.city,
-                    target_area=self.area,
-                    batch_no=self.batch_no
-                )
+                try:
+                    record, exclusion, sources = processor.process_company(
+                        candidate=candidate,
+                        target_city=self.city,
+                        target_area=self.area,
+                        batch_no=self.batch_no
+                    )
+                except Exception as comp_err:
+                    logger.warning(f"Error processing candidate {domain}: {comp_err}")
+                    exclusion = {"name": candidate.get("title", domain), "reason": f"Processing error: {comp_err}"}
+                    record = None
+                    sources = [candidate.get("url", "")]
 
                 with self.state_lock:
                     self.sources.extend(sources)
@@ -220,24 +241,10 @@ class WebTaskManager:
                     self.log(f"[-] Excluded {candidate['title']}: {exclusion['reason']}", level="info")
                     with self.state_lock:
                         self.excluded.append(exclusion)
-                    continue
-
-                if record:
-                    with self.state_lock:
-                        self.current_batch.append(record)
-                        self.companies.append(record)
-                        record["#"] = len(self.companies)
-
-                    ic_found = record["IC email ID"] != NOT_AVAILABLE or record["IC document / report link (POSH policy PDF, IC notice, annual report or BRSR where IC details appear)"] != NOT_AVAILABLE
-                    status_text = "POSH/IC details published" if ic_found else "No online IC published (marked 'Not available')"
-                    self.log(f"[+] Verified company: {record['Company name']} ({record['Legal form (Pvt Ltd / LLP / Listed / Not confirmed)']}) - {status_text}", level="success")
-
-                # Check batch limit or completion
-                if len(self.current_batch) >= self.batch_size or len(self.companies) >= self.target_count:
-                    if self.current_batch:
-                        # Write to Excel
-                        saved_path = exporter.export_batch(
-                            new_companies=self.current_batch,
+                    # Update Sheet 2 Notes & Sources on disk
+                    try:
+                        exporter.export_batch(
+                            new_companies=[],
                             area=self.area,
                             industry=self.industry,
                             target_rows=self.target_count,
@@ -245,13 +252,41 @@ class WebTaskManager:
                             excluded_companies=self.excluded,
                             all_source_urls=self.sources
                         )
-                        self.log(f"Batch {self.batch_no} exported to Excel: {os.path.basename(saved_path)}", level="success")
+                    except Exception:
+                        pass
+                    continue
+
+                if record:
+                    with self.state_lock:
+                        self.companies.append(record)
+                        record["#"] = len(self.companies)
+                        current_total = len(self.companies)
+
+                    # Incrementally write to Excel so disk is ALWAYS 100% up to date even if a crash occurs
+                    saved_path = exporter.export_batch(
+                        new_companies=[record],
+                        area=self.area,
+                        industry=self.industry,
+                        target_rows=self.target_count,
+                        batch_no=self.batch_no,
+                        excluded_companies=self.excluded,
+                        all_source_urls=self.sources
+                    )
+                    with self.state_lock:
+                        self.excel_path = saved_path
+
+                    ic_found = record["IC email ID"] != NOT_AVAILABLE or record["IC document / report link (POSH policy PDF, IC notice, annual report or BRSR where IC details appear)"] != NOT_AVAILABLE
+                    status_text = "POSH/IC details published" if ic_found else "No online IC published (marked 'Not available')"
+                    self.log(f"[+] Verified company #{current_total}: {record['Company name']} ({record['Legal form (Pvt Ltd / LLP / Listed / Not confirmed)']}) - {status_text}", level="success")
+
+                    # Check batch boundaries
+                    if current_total % self.batch_size == 0 or current_total >= self.target_count:
+                        self.log(f"Batch {self.batch_no} checkpoint: {current_total} of {self.target_count} rows saved to {exporter.filename}.", level="success")
 
                         with self.state_lock:
-                            self.current_batch = []
                             self.batch_no += 1
 
-                        if len(self.companies) >= self.target_count:
+                        if current_total >= self.target_count:
                             self.log(f"All {self.target_count} requested companies successfully verified and compiled into {exporter.filename}!", level="success")
                             break
 
@@ -260,24 +295,8 @@ class WebTaskManager:
                                 self.status = "paused"
                             self.log(f"Batch {self.batch_no - 1} complete. Paused. Click 'Continue Next Batch' or enable Auto-Continue to proceed.", level="warning")
 
-                            # Wait for continue or stop
                             while self.status == "paused" and not self.stop_requested:
                                 time.sleep(0.5)
-
-            # Flush any remaining unwritten companies if loop ended
-            if self.current_batch:
-                saved_path = exporter.export_batch(
-                    new_companies=self.current_batch,
-                    area=self.area,
-                    industry=self.industry,
-                    target_rows=self.target_count,
-                    batch_no=self.batch_no,
-                    excluded_companies=self.excluded,
-                    all_source_urls=self.sources
-                )
-                self.log(f"Final batch exported to Excel: {os.path.basename(saved_path)}", level="success")
-                with self.state_lock:
-                    self.current_batch = []
 
             with self.state_lock:
                 if not self.stop_requested:
@@ -288,18 +307,29 @@ class WebTaskManager:
             if not self.stop_requested:
                 self.log(f"Research workflow complete! Verified {len(self.companies)} qualifying companies. File ready for download.", level="success")
             else:
-                self.log("POSH research workflow stopped.", level="warning")
+                self.log(f"POSH research stopped. {len(self.companies)} verified companies safely preserved in {exporter.filename}.", level="warning")
 
         except Exception as e:
             logger.exception("Error in research task")
             with self.state_lock:
                 self.status = "error"
                 self.error_message = str(e)
-            self.log(f"Unexpected error: {e}", level="error")
+            self.log(f"Unexpected error: {e}. All {len(self.companies)} verified companies have been safely saved to Excel and remain downloadable.", level="error")
 
-        except Exception as e:
-            logger.exception("Error in research task")
-            with self.state_lock:
-                self.status = "error"
-                self.error_message = str(e)
-            self.log(f"Unexpected error: {e}", level="error")
+        finally:
+            # Ensure workbook on disk is finalized with complete audit tables even if failed or aborted
+            try:
+                final_path = exporter.export_batch(
+                    new_companies=[],
+                    area=self.area,
+                    industry=self.industry,
+                    target_rows=self.target_count,
+                    batch_no=self.batch_no,
+                    excluded_companies=self.excluded,
+                    all_source_urls=self.sources
+                )
+                with self.state_lock:
+                    self.excel_path = os.path.abspath(final_path)
+                    self.excel_filename = os.path.basename(final_path)
+            except Exception as final_err:
+                logger.error(f"Error finalizing Excel file: {final_err}")
