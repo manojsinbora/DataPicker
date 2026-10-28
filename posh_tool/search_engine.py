@@ -57,6 +57,84 @@ SKIP_DOMAINS = [
     "slideshare.net", "medium.com", "reddit.com", "pinterest.com"
 ]
 
+# Business registries, aggregators and directory domains to exclude when resolving official websites
+REGISTRY_AGGREGATOR_DOMAINS = [
+    "tofler.in", "zaubacorp.com", "instafinancials.com", "tracxn.com", "emis.com",
+    "ambitionbox.com", "justdial.com", "indiamart.com", "tradeindia.com", "fundoodata.com",
+    "quickr.com", "yellowpages.in", "sulekha.com", "economictimes.indiatimes.com",
+    "moneycontrol.com", "bloomberg.com", "reuters.com", "techstars.com", "crunchbase.com",
+    "pitchbook.com", "vccircle.com", "inc42.com", "yourstory.com", "mapsofindia.com",
+    "companycheck.co.uk", "openthedatabase.com", "google.com", "maps.google.com"
+]
+
+STOP_COMPANY_TOKENS = {
+    "private", "limited", "pvt", "ltd", "llp", "the", "and", "in", "of", "for",
+    "services", "solutions", "technologies", "technology", "india", "consulting",
+    "associates", "group", "enterprises", "systems", "corporation", "corp"
+}
+
+
+def clean_entity_name(title: str, url: str = "") -> str:
+    """
+    Cleans raw result title from MCA registries (Tofler, ZaubaCorp), LinkedIn, or Google Maps
+    to obtain the clean corporate legal name.
+    """
+    import re
+    s = title.strip()
+    # Strip site brandings and pipes/hyphens
+    s = re.sub(r"\s*[-|–—]\s*(?:Tofler|Zauba\s*Corp|LinkedIn|Google\s*Maps|InstaFinancials|Tracxn|AmbitionBox|Glassdoor).*$", "", s, flags=re.I)
+    # Strip financials / company details
+    s = re.sub(r"\s*[-|–—]?\s*(?:Financials\s*\|\s*Company\s*Details|Company\s*Details|Financials|Director\s*Details).*$", "", s, flags=re.I)
+    # Strip overview / about
+    s = re.sub(r"\s*:\s*(?:Overview|About|Jobs|Life).*$", "", s, flags=re.I)
+    # Strip trailing city / state like " - Bangalore, Karnataka"
+    s = re.sub(r"\s*[-|–—]\s*(?:Bangalore|Bengaluru|Mumbai|Delhi|Hyderabad|Chennai|Pune|Gurugram|Noida|Kolkata|Ahmedabad).*$", "", s, flags=re.I)
+    s = re.sub(r"[\s\-\|–—\.]+$", "", s).strip()
+
+    low = s.lower()
+    if not s or len(s) < 3:
+        if url:
+            for seg in reversed(url.rstrip("/").split("/")):
+                if seg and not seg.startswith("U") and not seg.startswith("AA") and len(seg) > 5:
+                    candidate = seg.replace("-", " ").title()
+                    if not any(portal in candidate.lower() for portal in ["tofler", "zauba", "linkedin", "company"]):
+                        return candidate
+        return ""
+    if any(portal in low for portal in ["tofler", "zauba corp", "zaubacorp", "linkedin", "google maps", "company information website", "search companies", "company directory", "list of companies", "top companies", "browse companies"]):
+        return ""
+    return s
+
+
+def is_domain_relevant(entity_name: str, domain: str, result_title: str = "", result_snippet: str = "") -> bool:
+    """
+    Validates whether a resolved domain corresponds to the target corporate entity.
+    Prevents false matches from spam or directory listings.
+    """
+    import re
+    clean = re.sub(r"[^\w\s]", " ", entity_name.lower())
+    tokens = [w for w in clean.split() if len(w) >= 3 and w not in STOP_COMPANY_TOKENS]
+    if not tokens:
+        return True
+
+    dom_clean = domain.lower()
+    title_clean = result_title.lower()
+    snippet_clean = result_snippet.lower()
+
+    # Check if any substantive token is in the domain
+    if any(t in dom_clean for t in tokens):
+        return True
+
+    # Check if substantive tokens appear in the title or snippet
+    matches_in_title = sum(1 for t in tokens if t in title_clean)
+    matches_in_snippet = sum(1 for t in tokens if t in snippet_clean)
+
+    if len(tokens) == 1 and (matches_in_title >= 1 or matches_in_snippet >= 1):
+        return True
+    if matches_in_title >= 2 or (matches_in_title >= 1 and matches_in_snippet >= 1):
+        return True
+
+    return False
+
 
 class SearchEngine:
     ENGINE_CASCADE = ["duckduckgo", "bing", "yahoo", "google", "searxng"]
@@ -391,13 +469,201 @@ class SearchEngine:
 
         return queries
 
-    def iter_candidates(self, city: str, area: str = "Whole city", industry: str = "Any") -> Iterator[Dict[str, str]]:
+    def build_advanced_discovery_queries(self, city: str, area: str = "Whole city", industry: str = "Any") -> List[Dict[str, str]]:
         """
-        Continuously yields candidate companies across all query tiers without stopping at an arbitrary limit.
+        Builds targeted public search queries to discover valid registered businesses:
+        - MCA Data: Ministry of Corporate Affairs / RoC indexes (Tofler, ZaubaCorp)
+        - LinkedIn Data: Official company directories
+        - Google Maps: Geographic corporate business listings
+        Covering Public Limited, Private Limited, and LLP corporate entities in the target geography.
         """
-        queries = self.build_query_tiers(city=city, area=area, industry=industry)
+        norm_city = city.strip()
+        area_clean = area.strip() if area and area.lower() not in ["whole city", "any", "none", "all"] else ""
+        industry_clean = industry.strip() if industry and industry.lower() not in ["any", "all", "none"] else ""
+
+        alias_list = CITY_ALIASES.get(norm_city.lower(), [norm_city])
+        primary_city = alias_list[0].title()
+        alt_city = alias_list[1].title() if len(alias_list) > 1 else primary_city
+
+        queries: List[Dict[str, str]] = []
+
+        # 1. MCA Data (Tofler & ZaubaCorp registry indexes)
+        # Private Limited
+        queries.append({"query": f'site:tofler.in "{primary_city}" "Private Limited" ROC', "source": "MCA Data (Tofler)"})
+        queries.append({"query": f'site:zaubacorp.com/company "{primary_city}" "Private Limited"', "source": "MCA Data (ZaubaCorp)"})
+        # LLP (Limited Liability Partnership)
+        queries.append({"query": f'site:tofler.in "{primary_city}" "LLP" ROC', "source": "MCA Data (Tofler)"})
+        queries.append({"query": f'site:zaubacorp.com/company "{primary_city}" "LLP"', "source": "MCA Data (ZaubaCorp)"})
+        # Public Limited
+        queries.append({"query": f'site:tofler.in "{primary_city}" "Limited" ROC', "source": "MCA Data (Tofler)"})
+        queries.append({"query": f'site:zaubacorp.com/company "{primary_city}" "Limited"', "source": "MCA Data (ZaubaCorp)"})
+
+        if alt_city != primary_city:
+            queries.append({"query": f'site:tofler.in "{alt_city}" "Private Limited" ROC', "source": "MCA Data (Tofler)"})
+            queries.append({"query": f'site:zaubacorp.com/company "{alt_city}" "Private Limited"', "source": "MCA Data (ZaubaCorp)"})
+
+        if area_clean:
+            queries.append({"query": f'site:tofler.in "{primary_city}" "{area_clean}" "Private Limited"', "source": "MCA Data (Tofler)"})
+            queries.append({"query": f'site:zaubacorp.com/company "{primary_city}" "{area_clean}"', "source": "MCA Data (ZaubaCorp)"})
+
+        if industry_clean:
+            queries.append({"query": f'site:tofler.in "{primary_city}" "{industry_clean}" "Private Limited"', "source": "MCA Data (Tofler)"})
+            queries.append({"query": f'site:zaubacorp.com/company "{primary_city}" "{industry_clean}"', "source": "MCA Data (ZaubaCorp)"})
+
+        # 2. LinkedIn Company Directories
+        queries.append({"query": f'site:linkedin.com/company "{primary_city}" "Private Limited"', "source": "LinkedIn Directory"})
+        queries.append({"query": f'site:linkedin.com/company "{primary_city}" "LLP"', "source": "LinkedIn Directory"})
+        queries.append({"query": f'site:linkedin.com/company "{primary_city}" "Limited"', "source": "LinkedIn Directory"})
+
+        if alt_city != primary_city:
+            queries.append({"query": f'site:linkedin.com/company "{alt_city}" "Private Limited"', "source": "LinkedIn Directory"})
+
+        if area_clean:
+            queries.append({"query": f'site:linkedin.com/company "{primary_city}" "{area_clean}" "Private Limited"', "source": "LinkedIn Directory"})
+
+        if industry_clean:
+            queries.append({"query": f'site:linkedin.com/company "{primary_city}" "{industry_clean}" "Private Limited"', "source": "LinkedIn Directory"})
+
+        # 3. Google Maps / Geographic Business Listings
+        queries.append({"query": f'site:google.com/maps "{primary_city}" "Private Limited"', "source": "Google Maps"})
+        queries.append({"query": f'"{primary_city}" "Private Limited" "Google Maps"', "source": "Google Maps"})
+        queries.append({"query": f'site:google.com/maps "{primary_city}" "LLP"', "source": "Google Maps"})
+        queries.append({"query": f'"{primary_city}" "LLP" "Google Maps"', "source": "Google Maps"})
+        queries.append({"query": f'site:google.com/maps "{primary_city}" "Limited"', "source": "Google Maps"})
+        queries.append({"query": f'"corporate office" "{primary_city}" "Google Maps"', "source": "Google Maps"})
+
+        if area_clean:
+            queries.append({"query": f'site:google.com/maps "{primary_city}" "{area_clean}"', "source": "Google Maps"})
+            queries.append({"query": f'"{area_clean}" "{primary_city}" "Google Maps"', "source": "Google Maps"})
+
+        return queries
+
+    def resolve_company_domain(self, entity_name: str, city: str) -> Optional[Dict[str, str]]:
+        """
+        Resolves a verified corporate entity name to its official company website.
+        Filters out registries, aggregators, job boards, and spam sites.
+        """
+        # Primary search: official website
+        query = f'"{entity_name}" official website'
+        results = self.search(query, max_results=5)
+        for r in results:
+            href = r.get("href", "")
+            if not href.startswith("http"):
+                continue
+            dom = urlparse(href).netloc.lower()
+            if dom.startswith("www."):
+                dom = dom[4:]
+            if not dom:
+                continue
+            if any(skip in dom for skip in SKIP_DOMAINS) or any(reg in dom for reg in REGISTRY_AGGREGATOR_DOMAINS):
+                continue
+            if is_domain_relevant(entity_name, dom, r.get("title", ""), r.get("body", "")):
+                return {
+                    "domain": dom,
+                    "url": href,
+                    "title": r.get("title", entity_name)
+                }
+
+        # Secondary search: city corporate website
+        query_alt = f'{entity_name} {city} corporate website'
+        results_alt = self.search(query_alt, max_results=4)
+        for r in results_alt:
+            href = r.get("href", "")
+            if not href.startswith("http"):
+                continue
+            dom = urlparse(href).netloc.lower()
+            if dom.startswith("www."):
+                dom = dom[4:]
+            if not dom:
+                continue
+            if any(skip in dom for skip in SKIP_DOMAINS) or any(reg in dom for reg in REGISTRY_AGGREGATOR_DOMAINS):
+                continue
+            if is_domain_relevant(entity_name, dom, r.get("title", ""), r.get("body", "")):
+                return {
+                    "domain": dom,
+                    "url": href,
+                    "title": r.get("title", entity_name)
+                }
+
+        return None
+
+    def iter_advanced_candidates(
+        self,
+        city: str,
+        area: str = "Whole city",
+        industry: str = "Any"
+    ) -> Iterator[Dict[str, str]]:
+        """
+        Advanced Discovery:
+        Queries MCA Data (Tofler, ZaubaCorp), LinkedIn directories, and Google Maps listings
+        for Public Limited, Private Limited, and LLP corporate entities in the target geography,
+        extracts clean registered entity names, resolves them to official corporate domains,
+        and yields candidates.
+        """
+        discovery_queries = self.build_advanced_discovery_queries(city=city, area=area, industry=industry)
+        seen_entities = set()
         seen_domains = set()
 
+        for q_item in discovery_queries:
+            q_text = q_item["query"]
+            source_tag = q_item["source"]
+            items = self.search(q_text, max_results=8)
+            for item in items:
+                raw_title = item.get("title", "")
+                raw_href = item.get("href", "")
+                entity_name = clean_entity_name(raw_title, raw_href)
+                if not entity_name:
+                    continue
+
+                entity_key = entity_name.lower()
+                if entity_key in seen_entities:
+                    continue
+                seen_entities.add(entity_key)
+
+                resolved = self.resolve_company_domain(entity_name, city)
+                if not resolved:
+                    continue
+
+                dom = resolved["domain"]
+                if dom in seen_domains:
+                    continue
+                seen_domains.add(dom)
+
+                yield {
+                    "title": entity_name,
+                    "url": resolved["url"],
+                    "domain": dom,
+                    "snippet": f"Discovered via {source_tag} in {city} ({item.get('body', '')[:100]})",
+                    "discovery_source": source_tag
+                }
+
+    def iter_candidates(
+        self,
+        city: str,
+        area: str = "Whole city",
+        industry: str = "Any",
+        search_mode: str = "basic"
+    ) -> Iterator[Dict[str, str]]:
+        """
+        Continuously yields candidate companies across all query tiers without stopping at an arbitrary limit.
+        If search_mode == 'advanced':
+          Discovers registered businesses via MCA Data, LinkedIn, and Google Maps (Pvt Ltd, Limited, LLP)
+          first, resolves to company domains, and seamlessly continues into standard query tiers.
+        If search_mode == 'basic':
+          Directly executes standard multi-tiered public search queries.
+        """
+        seen_domains = set()
+
+        if search_mode and search_mode.lower() == "advanced":
+            for cand in self.iter_advanced_candidates(city=city, area=area, industry=industry):
+                domain = cand["domain"]
+                if domain in seen_domains:
+                    continue
+                seen_domains.add(domain)
+                yield cand
+
+        # Standard query tiers (continuous fallback)
+        queries = self.build_query_tiers(city=city, area=area, industry=industry)
         for q in queries:
             items = self.search(q, max_results=12)
             for item in items:
@@ -423,12 +689,19 @@ class SearchEngine:
                     "snippet": item["body"]
                 }
 
-    def discover_companies(self, city: str, area: str = "Whole city", industry: str = "Any", limit: int = 100) -> List[Dict[str, str]]:
+    def discover_companies(
+        self,
+        city: str,
+        area: str = "Whole city",
+        industry: str = "Any",
+        limit: int = 100,
+        search_mode: str = "basic"
+    ) -> List[Dict[str, str]]:
         """
-        Discovers candidates up to the requested limit across all query tiers.
+        Discovers candidates up to the requested limit across query tiers.
         """
         candidates = []
-        for cand in self.iter_candidates(city=city, area=area, industry=industry):
+        for cand in self.iter_candidates(city=city, area=area, industry=industry, search_mode=search_mode):
             candidates.append(cand)
             if len(candidates) >= limit:
                 break

@@ -55,6 +55,18 @@ class TestWebAPI(unittest.TestCase):
         mock_start.assert_called_once()
         self.assertEqual(mock_start.call_args[1]["require_phone"], "mandatory")
 
+    @patch.object(WebTaskManager, "start_task", return_value=True)
+    def test_start_with_search_mode_advanced(self, mock_start):
+        """Test POST /api/start accepts search_mode parameter and forwards it."""
+        res = self.app.post(
+            "/api/start",
+            data=json.dumps({"city": "Bangalore", "count": 25, "search_mode": "advanced"}),
+            content_type="application/json"
+        )
+        self.assertEqual(res.status_code, 200)
+        mock_start.assert_called_once()
+        self.assertEqual(mock_start.call_args[1]["search_mode"], "advanced")
+
     def test_stop_route(self):
         """Test POST /api/stop gracefully handles stop request."""
         res = self.app.post("/api/stop")

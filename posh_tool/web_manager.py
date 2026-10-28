@@ -44,6 +44,7 @@ class WebTaskManager:
         self.target_count = 25
         self.industry = "Any"
         self.require_phone = "optional"
+        self.search_mode = "basic"
         self.batch_size = BATCH_SIZE
         self.auto_continue = True
 
@@ -76,6 +77,7 @@ class WebTaskManager:
         count: int = 25,
         industry: str = "Any",
         require_phone: str = "optional",
+        search_mode: str = "basic",
         batch_size: int = BATCH_SIZE,
         auto_continue: bool = True
     ) -> bool:
@@ -92,6 +94,8 @@ class WebTaskManager:
             self.industry = industry.strip() if industry.strip() else "Any"
             req_clean = require_phone.strip().lower() if require_phone else "optional"
             self.require_phone = req_clean if req_clean in ["mandatory", "optional"] else "optional"
+            sm_clean = search_mode.strip().lower() if search_mode else "basic"
+            self.search_mode = sm_clean if sm_clean in ["basic", "advanced"] else "basic"
             self.batch_size = max(1, int(batch_size))
             self.auto_continue = bool(auto_continue)
 
@@ -107,7 +111,7 @@ class WebTaskManager:
             self.excel_filename = exporter.filename
             self.excel_path = os.path.abspath(exporter.filename)
 
-        self.log(f"Starting research: City='{self.city}', Area='{self.area}', Target={self.target_count}, Industry='{self.industry}', Phone Requirement='{self.require_phone.title()}'")
+        self.log(f"Starting research: City='{self.city}', Area='{self.area}', Target={self.target_count}, Industry='{self.industry}', Phone Requirement='{self.require_phone.title()}', Search Mode='{self.search_mode.title()}'")
         self.thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.thread.start()
         return True
@@ -151,6 +155,7 @@ class WebTaskManager:
                 "target_count": self.target_count,
                 "industry": self.industry,
                 "require_phone": self.require_phone,
+                "search_mode": self.search_mode,
                 "delivered_count": total_delivered,
                 "batch_no": self.batch_no,
                 "excel_filename": self.excel_filename,
@@ -190,20 +195,23 @@ class WebTaskManager:
                 batch_no=1,
                 excluded_companies=[],
                 all_source_urls=[],
-                require_phone=self.require_phone
+                require_phone=self.require_phone,
+                search_mode=self.search_mode
             )
             with self.state_lock:
                 self.excel_path = init_path
                 self.excel_filename = exporter.filename
 
             self.log(f"Initiating continuous public discovery for {self.city} (Area: {self.area}, Industry: {self.industry})...")
+            self.log(f"Search mode: {self.search_mode.title()} ({'MCA Data + LinkedIn + Google Maps discovery for Pvt Ltd/Limited/LLP' if self.search_mode == 'advanced' else 'Standard multi-tier POSH & sector queries'}).")
             self.log("Multi-engine cascading public search active: DuckDuckGo -> Bing -> Yahoo -> Google -> SearXNG (100% zero-paid compliance).")
             self.log(f"Initialized output file: {exporter.filename} (ready for instant download)")
 
             candidate_gen = search_engine.iter_candidates(
                 city=self.city,
                 area=self.area,
-                industry=self.industry
+                industry=self.industry,
+                search_mode=self.search_mode
             )
 
             seen_domains = set()
@@ -261,7 +269,8 @@ class WebTaskManager:
                             batch_no=self.batch_no,
                             excluded_companies=self.excluded,
                             all_source_urls=self.sources,
-                            require_phone=self.require_phone
+                            require_phone=self.require_phone,
+                            search_mode=self.search_mode
                         )
                     except Exception:
                         pass
@@ -282,7 +291,8 @@ class WebTaskManager:
                         batch_no=self.batch_no,
                         excluded_companies=self.excluded,
                         all_source_urls=self.sources,
-                        require_phone=self.require_phone
+                        require_phone=self.require_phone,
+                        search_mode=self.search_mode
                     )
                     with self.state_lock:
                         self.excel_path = saved_path
@@ -339,7 +349,8 @@ class WebTaskManager:
                     batch_no=self.batch_no,
                     excluded_companies=self.excluded,
                     all_source_urls=self.sources,
-                    require_phone=self.require_phone
+                    require_phone=self.require_phone,
+                    search_mode=self.search_mode
                 )
                 with self.state_lock:
                     self.excel_path = os.path.abspath(final_path)

@@ -132,7 +132,34 @@ class TestExcelExporter(unittest.TestCase):
         self.assertTrue(any("PROJECT METADATA" in str(v) for v in cell_vals))
         self.assertTrue(any("RUNNING GAPS SUMMARY" in str(v) for v in cell_vals))
         self.assertTrue(any("Phone Requirement" in str(v) for v in cell_vals))
+        self.assertTrue(any("Search Mode" in str(v) for v in cell_vals))
         self.assertTrue(any("Excluded Coaching Center" in str(v) for v in cell_vals))
+
+    def test_export_search_mode_advanced(self):
+        """Verify that search_mode='advanced' is accurately recorded in Sheet 2 Project Metadata."""
+        path = self.exporter.export_batch(
+            new_companies=[],
+            area="Whitefield",
+            industry="IT",
+            target_rows=10,
+            batch_no=1,
+            excluded_companies=[],
+            all_source_urls=[],
+            require_phone="mandatory",
+            search_mode="advanced"
+        )
+        self.assertTrue(os.path.exists(path))
+        wb = openpyxl.load_workbook(path)
+        ws_notes = wb["Notes & Sources"]
+        
+        # Verify Search Mode row in Sheet 2
+        found_mode = False
+        for row in ws_notes.iter_rows(values_only=True):
+            if row[0] == "Search Mode":
+                self.assertEqual(row[1], "Advanced")
+                found_mode = True
+                break
+        self.assertTrue(found_mode, "Search Mode row was not found in Sheet 2 Project Metadata!")
 
 
 if __name__ == "__main__":

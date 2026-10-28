@@ -5,7 +5,13 @@ Tests multi-tiered query construction, domain exclusion filtering, and candidate
 
 import unittest
 from unittest.mock import patch, MagicMock
-from posh_tool.search_engine import SearchEngine, SKIP_DOMAINS
+from posh_tool.search_engine import (
+    SearchEngine,
+    SKIP_DOMAINS,
+    REGISTRY_AGGREGATOR_DOMAINS,
+    clean_entity_name,
+    is_domain_relevant
+)
 
 
 class TestSearchEngine(unittest.TestCase):
@@ -103,6 +109,113 @@ class TestSearchEngine(unittest.TestCase):
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["title"], "Beta Systems POSH")
             self.assertEqual(results[0]["href"], "https://betasystems.com/posh")
+
+    def test_clean_entity_name(self):
+        """Test entity name extraction and cleaning from MCA, LinkedIn, and Maps titles."""
+        # MCA (Tofler)
+        self.assertEqual(
+            clean_entity_name("Bangalore Tower Financials | Company Details | Tofler"),
+            "Bangalore Tower"
+        )
+        self.assertEqual(
+            clean_entity_name("Bangalore Software Services Financials | Company Details - Tofler"),
+            "Bangalore Software Services"
+        )
+        # MCA (ZaubaCorp)
+        self.assertEqual(
+            clean_entity_name("Bangalore Softsell Limited - Company Details | Zauba Corp"),
+            "Bangalore Softsell Limited"
+        )
+        self.assertEqual(
+            clean_entity_name("Triangulas Business Consulting LLP - Company Details | Zauba Corp"),
+            "Triangulas Business Consulting LLP"
+        )
+        # LinkedIn
+        self.assertEqual(
+            clean_entity_name("LAKSHMI NIRMAN ( BANGALORE ) PRIVATE LIMITED | LinkedIn"),
+            "LAKSHMI NIRMAN ( BANGALORE ) PRIVATE LIMITED"
+        )
+        self.assertEqual(
+            clean_entity_name("Wipro: Overview | LinkedIn"),
+            "Wipro"
+        )
+        # Google Maps
+        self.assertEqual(
+            clean_entity_name("Metec Design Engineers Private Limited - Bangalore - Google Maps"),
+            "Metec Design Engineers Private Limited"
+        )
+        # Rejections (generic portal landing pages)
+        self.assertEqual(clean_entity_name("Tofler | Company Information Website"), "")
+        self.assertEqual(clean_entity_name("Zauba Corp"), "")
+        self.assertEqual(clean_entity_name("Browse companies in Bangalore - LinkedIn"), "")
+
+    def test_is_domain_relevant(self):
+        """Test domain relevance checking against company name tokens."""
+        # Relevant
+        self.assertTrue(
+            is_domain_relevant("Triangulas Business Consulting LLP", "triangulas.com")
+        )
+        self.assertTrue(
+            is_domain_relevant("Infosys Limited", "infosys.org", "Infosys Foundation")
+        )
+        self.assertTrue(
+            is_domain_relevant("Vasan & Sampath LLP", "vsnllp.com", "Vasan & Sampath Chartered Accountants")
+        )
+        # Irrelevant / spam
+        self.assertFalse(
+            is_domain_relevant("Vasan & Sampath LLP", "antarvasna3.com", "Spam Title", "Spam body")
+        )
+        self.assertFalse(
+            is_domain_relevant("Metec Design", "travelguide.in", "Best Places in Bangalore", "Tour guide")
+        )
+
+    def test_build_advanced_discovery_queries(self):
+        """Test construction of MCA, LinkedIn, and Google Maps discovery queries."""
+        adv_queries = self.engine.build_advanced_discovery_queries(city="Bangalore", area="Whitefield", industry="IT")
+        self.assertGreater(len(adv_queries), 8)
+
+        # MCA Data coverage
+        mca_queries = [q["query"] for q in adv_queries if "MCA Data" in q["source"]]
+        self.assertTrue(any("tofler.in" in q and "Private Limited" in q for q in mca_queries))
+        self.assertTrue(any("zaubacorp.com" in q and "LLP" in q for q in mca_queries))
+        self.assertTrue(any("Limited" in q for q in mca_queries))
+
+        # LinkedIn coverage
+        linkedin_queries = [q["query"] for q in adv_queries if "LinkedIn" in q["source"]]
+        self.assertTrue(any("linkedin.com/company" in q and "Private Limited" in q for q in linkedin_queries))
+        self.assertTrue(any("linkedin.com/company" in q and "LLP" in q for q in linkedin_queries))
+
+        # Google Maps coverage
+        maps_queries = [q["query"] for q in adv_queries if "Google Maps" in q["source"]]
+        self.assertTrue(any("google.com/maps" in q or "Google Maps" in q for q in maps_queries))
+
+    def test_resolve_company_domain(self):
+        """Test domain resolution filtering aggregators and matching corporate site."""
+        mock_results = [
+            {"title": "AlphaCorp on Tofler", "href": "https://www.tofler.in/alphacorp/company", "body": "Tofler details"},
+            {"title": "AlphaCorp on Zauba Corp", "href": "https://www.zaubacorp.com/company/alphacorp", "body": "Zauba details"},
+            {"title": "AlphaCorp Technologies Official", "href": "https://www.alphacorp.in/about", "body": "Official website"}
+        ]
+        with patch.object(self.engine, "search", return_value=mock_results):
+            resolved = self.engine.resolve_company_domain("AlphaCorp Technologies", "Bangalore")
+            self.assertIsNotNone(resolved)
+            self.assertEqual(resolved["domain"], "alphacorp.in")
+            self.assertEqual(resolved["url"], "https://www.alphacorp.in/about")
+
+    def test_iter_candidates_advanced_mode(self):
+        """Test that iter_candidates with search_mode='advanced' executes advanced discovery."""
+        mock_adv_cand = {
+            "title": "AlphaCorp Private Limited",
+            "url": "https://alphacorp.in",
+            "domain": "alphacorp.in",
+            "snippet": "Discovered via MCA Data"
+        }
+        with patch.object(self.engine, "iter_advanced_candidates", return_value=iter([mock_adv_cand])):
+            with patch.object(self.engine, "build_query_tiers", return_value=[]):
+                candidates = list(self.engine.iter_candidates(city="Bangalore", search_mode="advanced"))
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0]["domain"], "alphacorp.in")
+                self.assertEqual(candidates[0]["title"], "AlphaCorp Private Limited")
 
 
 if __name__ == "__main__":

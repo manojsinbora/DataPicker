@@ -53,8 +53,15 @@ def ask_interactive_inputs() -> Dict[str, Any]:
     else:
         q5 = "Mandatory"
 
-    # Repeat all five answers back in one line, then start immediately.
-    print(f"\nCity: {q1} | Area: {q2} | Total requested: {q3} | Industry: {q4} | Phone Requirement: {q5}")
+    # Q6
+    q6 = input("\nQ6. Search mode? (Reply 'Basic' or 'Advanced', default: 'Basic')\n> ").strip()
+    if not q6 or q6.lower() not in ["advanced", "adv", "a"]:
+        q6 = "Basic"
+    else:
+        q6 = "Advanced"
+
+    # Repeat all six answers back in one line, then start immediately.
+    print(f"\nCity: {q1} | Area: {q2} | Total requested: {q3} | Industry: {q4} | Phone Requirement: {q5} | Search Mode: {q6}")
     print("Starting research immediately...\n")
 
     return {
@@ -62,7 +69,8 @@ def ask_interactive_inputs() -> Dict[str, Any]:
         "area": q2,
         "count": q3,
         "industry": q4,
-        "require_phone": q5.lower()
+        "require_phone": q5.lower(),
+        "search_mode": q6.lower()
     }
 
 
@@ -72,6 +80,7 @@ def run_pipeline(
     count: int = 25,
     industry: str = "Any",
     require_phone: str = "optional",
+    search_mode: str = "basic",
     batch_size: int = BATCH_SIZE,
     auto_continue: bool = False
 ):
@@ -80,8 +89,8 @@ def run_pipeline(
     processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
     exporter = ExcelExporter(city=city)
 
-    print(f"[*] Initiating continuous public candidate discovery for {city} (Area: {area}, Industry: {industry}, Phone Requirement: {require_phone.title()})...")
-    candidate_gen = search_engine.iter_candidates(city=city, area=area, industry=industry)
+    print(f"[*] Initiating continuous public candidate discovery for {city} (Area: {area}, Industry: {industry}, Phone Requirement: {require_phone.title()}, Search Mode: {search_mode.title()})...")
+    candidate_gen = search_engine.iter_candidates(city=city, area=area, industry=industry, search_mode=search_mode)
 
     delivered_records: List[Dict[str, Any]] = []
     excluded_records: List[Dict[str, str]] = []
@@ -136,7 +145,8 @@ def run_pipeline(
                     batch_no=batch_no,
                     excluded_companies=excluded_records,
                     all_source_urls=all_source_urls,
-                    require_phone=require_phone
+                    require_phone=require_phone,
+                    search_mode=search_mode
                 )
 
                 # Batch summary
@@ -176,7 +186,9 @@ def run_pipeline(
             target_rows=count,
             batch_no=batch_no,
             excluded_companies=excluded_records,
-            all_source_urls=all_source_urls
+            all_source_urls=all_source_urls,
+            require_phone=require_phone,
+            search_mode=search_mode
         )
         print(f"[✓] Final batch of {len(current_batch)} records saved to {file_path}")
 
@@ -192,6 +204,7 @@ def main():
     parser.add_argument("--count", type=int, default=25, help="Number of companies to research")
     parser.add_argument("--industry", type=str, default="Any", help="Industry filter")
     parser.add_argument("--require-phone", type=str, default="optional", choices=["optional", "mandatory"], help="Valid phone requirement (default: optional)")
+    parser.add_argument("--search-mode", type=str, default="basic", choices=["basic", "advanced"], help="Search mode: basic or advanced (default: basic)")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE, help="Batch size (default: 25)")
     parser.add_argument("--auto-continue", action="store_true", help="Automatically proceed without pausing between batches")
 
@@ -203,7 +216,8 @@ def main():
         count = args.count
         industry = args.industry
         require_phone = args.require_phone
-        print(f"City: {city} | Area: {area} | Total requested: {count} | Industry: {industry} | Phone Requirement: {require_phone.title()}")
+        search_mode = args.search_mode
+        print(f"City: {city} | Area: {area} | Total requested: {count} | Industry: {industry} | Phone Requirement: {require_phone.title()} | Search Mode: {search_mode.title()}")
         print("Starting research immediately...\n")
     else:
         inputs = ask_interactive_inputs()
@@ -212,6 +226,7 @@ def main():
         count = inputs["count"]
         industry = inputs["industry"]
         require_phone = inputs.get("require_phone", "optional")
+        search_mode = inputs.get("search_mode", "basic")
 
     run_pipeline(
         city=city,
@@ -219,6 +234,7 @@ def main():
         count=count,
         industry=industry,
         require_phone=require_phone,
+        search_mode=search_mode,
         batch_size=args.batch_size,
         auto_continue=args.auto_continue
     )

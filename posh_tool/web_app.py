@@ -31,6 +31,9 @@ def start_task():
     require_phone = data.get("require_phone", "optional").strip().lower()
     if require_phone not in ["mandatory", "optional"]:
         require_phone = "optional"
+    search_mode = data.get("search_mode", "basic").strip().lower()
+    if search_mode not in ["basic", "advanced"]:
+        search_mode = "basic"
     batch_size = data.get("batch_size", 25)
     auto_continue = data.get("auto_continue", True)
 
@@ -50,6 +53,7 @@ def start_task():
         count=count,
         industry=industry,
         require_phone=require_phone,
+        search_mode=search_mode,
         batch_size=batch_size,
         auto_continue=auto_continue
     )
