@@ -8,3 +8,4 @@ primp>=0.15.0
 pdfplumber>=0.11.0
 pypdf>=5.0.0
 lxml>=5.0.0
+

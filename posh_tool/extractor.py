@@ -8,14 +8,16 @@ Record a contact ONLY if it appears verbatim on a public page or document. Other
 import re
 from typing import Dict, Any, List, Optional, Tuple
 from bs4 import BeautifulSoup
-from datetime import datetime
 
 from .config import (
     EMAIL_REGEX,
     PHONE_REGEX,
     PIN_CODE_REGEX,
     EMPLOYEE_COUNT_REGEX,
-    EXCLUSION_KEYWORDS,
+    EXCLUSION_PHRASES,
+    EXCLUDED_DOMAIN_KEYWORDS,
+    CITY_ALIASES,
+    CITY_PIN_PREFIXES,
     NOT_AVAILABLE
 )
 
@@ -27,22 +29,61 @@ class DataExtractor:
     def check_disqualification(self, text: str, domain: str) -> Optional[str]:
         """
         Checks if an entity is disqualified under strict criteria:
-        - Training/coaching institutes & training consultancies
-        - Coworking spaces
-        - Recruitment/staffing agencies
+        - Training/coaching institutes & coaching centers
+        - Coworking spaces & virtual offices
+        - Recruitment/staffing agencies & placement consultancies
         - Fraud / directory signals
         Returns reason if disqualified, None if qualified.
         """
         text_lower = text.lower()
         domain_lower = domain.lower()
 
-        for kw in EXCLUSION_KEYWORDS:
+        # Check domain-level exclusions
+        for kw in EXCLUDED_DOMAIN_KEYWORDS:
             if kw in domain_lower:
                 return f"Disqualified: domain matches excluded business type '{kw}'"
-            if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
-                return f"Disqualified: business activity identified as '{kw}'"
+
+        # Check multi-word exclusion phrases
+        for phrase in EXCLUSION_PHRASES:
+            if phrase in text_lower:
+                # Confirm it is an actual business service description
+                return f"Disqualified: business activity identified as '{phrase}'"
 
         return None
+
+    def is_city_matched(self, text: str, target_city: str, target_area: str = "") -> Tuple[bool, bool]:
+        """
+        Validates if text confirms physical location in target city (and area if specified).
+        Supports city synonyms (e.g. Bangalore == Bengaluru) and PIN code prefixes.
+        Returns (city_matched, area_matched).
+        """
+        text_lower = text.lower()
+        norm_city = target_city.strip().lower()
+
+        # 1. Get city name variants
+        city_variants = CITY_ALIASES.get(norm_city, [norm_city])
+        if norm_city not in city_variants:
+            city_variants.append(norm_city)
+
+        city_matched = any(re.search(r'\b' + re.escape(v) + r'\b', text_lower) for v in city_variants)
+
+        # 2. Check Indian PIN code prefixes for the city (e.g., 560xxx for Bangalore)
+        if not city_matched:
+            pin_prefixes = CITY_PIN_PREFIXES.get(norm_city, [])
+            if pin_prefixes:
+                found_pins = PIN_CODE_REGEX.findall(text)
+                for pin in found_pins:
+                    if any(pin.startswith(prefix) for prefix in pin_prefixes):
+                        city_matched = True
+                        break
+
+        # 3. Check area/locality if provided
+        area_matched = True
+        norm_area = target_area.strip().lower() if target_area else ""
+        if norm_area and norm_area not in ["whole city", "any", "none", "all"]:
+            area_matched = norm_area in text_lower
+
+        return city_matched, area_matched
 
     def determine_legal_form(self, text: str, company_name: str) -> str:
         """
@@ -50,13 +91,13 @@ class DataExtractor:
         """
         combined = f"{company_name} {text}".lower()
 
-        if any(k in combined for k in ["bse:", "nse:", "isin:", "listed on bse", "listed on nse", "scrip code:"]):
+        if any(k in combined for k in ["bse:", "nse:", "isin:", "listed on bse", "listed on nse", "scrip code:", "bse code"]):
             return "Listed"
         if re.search(r'\b(pvt\.?\s*ltd\.?|private\s+limited)\b', combined):
             return "Pvt Ltd"
         if re.search(r'\b(llp|limited\s+liability\s+partnership)\b', combined):
             return "LLP"
-        if re.search(r'\b(limited|ltd\.)\b', combined) and "private" not in combined:
+        if re.search(r'\b(public\s+limited|limited|ltd\.)\b', combined) and "private" not in combined:
             return "Listed"
 
         return "Not confirmed"
@@ -65,14 +106,14 @@ class DataExtractor:
         """
         Finds physical address with 6-digit Indian PIN code.
         """
-        city_lower = city.lower()
-        area_lower = area.lower() if area and area.lower() not in ["whole city", "any", "none"] else ""
+        city_lower = city.strip().lower()
+        city_variants = CITY_ALIASES.get(city_lower, [city_lower])
+        pin_prefixes = CITY_PIN_PREFIXES.get(city_lower, [])
 
         lines = [l.strip() for l in text.splitlines() if l.strip()]
         address_indicators = [
             "road", "street", "floor", "nagar", "layout", "building", "office",
             "tower", "cross", "complex", "sector", "phase", "block", "marg", "lane",
-            "bengaluru", "bangalore", "mumbai", "delhi", "pune", "hyderabad", "chennai", "kolkata",
             "pin", "pin code", "postal code"
         ]
 
@@ -80,7 +121,7 @@ class DataExtractor:
             pin_match = PIN_CODE_REGEX.search(line)
             if pin_match:
                 pin_val = pin_match.group(1)
-                # Ensure it's not part of a phone number
+                # Ensure it's not a phone number fragment
                 if re.search(r'\+?91[\-\s]?' + pin_val, line):
                     continue
 
@@ -93,7 +134,13 @@ class DataExtractor:
                         addr_parts.append(l)
 
                 joined_addr = ", ".join(addr_parts)
-                if city_lower in joined_addr.lower() or (area_lower and area_lower in joined_addr.lower()) or any(ind in joined_addr.lower() for ind in address_indicators):
+                joined_lower = joined_addr.lower()
+
+                matches_city = any(v in joined_lower for v in city_variants)
+                matches_pin_prefix = any(pin_val.startswith(p) for p in pin_prefixes) if pin_prefixes else False
+                matches_indicator = any(ind in joined_lower for ind in address_indicators)
+
+                if matches_city or matches_pin_prefix or matches_indicator:
                     clean_addr = re.sub(r'\s+', ' ', joined_addr).strip()
                     if 15 <= len(clean_addr) <= 200:
                         return clean_addr
@@ -120,9 +167,9 @@ class DataExtractor:
         if "great place to work" in text.lower():
             return "Great Place to Work certified employer (>= 10 employees confirmed)"
 
-        # Check for team members list or about us
-        if "our team" in text.lower() or "leadership team" in text.lower():
-            return "Active operating corporate team observed on company site (>= 10 employees)"
+        # Check for team members list or leadership team
+        if "leadership team" in text.lower() or "board of directors" in text.lower():
+            return "Active operating corporate leadership team on company site (>= 10 employees)"
 
         return NOT_AVAILABLE
 
@@ -141,7 +188,6 @@ class DataExtractor:
                 email = em
                 break
         if email == NOT_AVAILABLE and emails:
-            # Fallback to first non-excluded email
             for em in emails:
                 if not any(ex in em.lower() for ex in [".png", ".jpg", ".webp", "careers", "jobs", "posh"]):
                     email = em
@@ -181,8 +227,8 @@ class DataExtractor:
 
         # Look for HR Name
         name_patterns = [
-            r'(?:head of hr|hr head|chief people officer|people officer|talent partner)[\s:\-–—]+(?:ms\.|mrs\.|mr\.)?\s*([A-Za-z\s]{3,30})',
-            r'(?:contact\s+hr|recruiter)[\s:\-–—]+(?:ms\.|mrs\.|mr\.)?\s*([A-Za-z\s]{3,30})'
+            r'(?:head of hr|hr head|chief people officer|people officer|talent partner)[\s:\-–—]+((?:(?:Ms\.|Mrs\.|Dr\.|Mr\.)\s+)?[A-Z][a-zA-Z\.\s]{2,25}?)(?=\s+(?:at|email|call|tel|on|\-|,|\.|\n|$))',
+            r'(?:contact\s+hr|recruiter)[\s:\-–—]+((?:(?:Ms\.|Mrs\.|Dr\.|Mr\.)\s+)?[A-Z][a-zA-Z\.\s]{2,25}?)(?=\s+(?:at|email|call|tel|on|\-|,|\.|\n|$))'
         ]
         for pat in name_patterns:
             m = re.search(pat, text, re.IGNORECASE)
@@ -212,9 +258,9 @@ class DataExtractor:
         res["ic_found"] = True
         res["where_found"] = f"POSH Policy Web Page ({url})"
 
-        # Presiding Officer
+        # Presiding Officer (as published, including honorific if present)
         m_po = re.search(
-            r'presiding\s+officer[\s:\-–—]+(?:ms\.|mrs\.|dr\.|mr\.)?\s*([A-Za-z\.\s]{3,35})(?:\n|,|\(|\-)',
+            r'presiding\s+officer[\s:\-–—]+((?:(?:Ms\.|Mrs\.|Dr\.|Mr\.|Adv\.)\s+)?[A-Z][A-Za-z\.\s]{2,30}?)(?:\n|,|\(|\-|\bat\b|\bemail\b|$)',
             text,
             re.IGNORECASE
         )
@@ -230,7 +276,6 @@ class DataExtractor:
                 res["ic_email"] = em
                 break
         if res["ic_email"] == NOT_AVAILABLE and emails:
-            # Check any email on this specific POSH page
             res["ic_email"] = emails[0]
 
         # Phones

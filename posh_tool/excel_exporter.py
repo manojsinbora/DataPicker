@@ -95,6 +95,17 @@ class ExcelExporter:
             # Write row cells
             for col_idx, val in enumerate(row_data, start=1):
                 cell = ws_companies.cell(row=start_row, column=col_idx)
+                
+                # Integer columns: # and Batch no.
+                if col_idx in (1, 20):
+                    try:
+                        cell.value = int(val)
+                    except (ValueError, TypeError):
+                        cell.value = val
+                    cell.font = regular_font
+                    cell.alignment = regular_alignment
+                    continue
+
                 str_val = str(val).strip() if val is not None else NOT_AVAILABLE
                 if not str_val:
                     str_val = NOT_AVAILABLE

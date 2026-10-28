@@ -71,14 +71,8 @@ def run_pipeline(
     processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
     exporter = ExcelExporter(city=city)
 
-    print(f"[*] Discovering public candidates for {city} (Area: {area}, Industry: {industry})...")
-    candidates = search_engine.discover_companies(city=city, area=area, industry=industry, limit=count * 3)
-
-    if not candidates:
-        print(f"[!] No candidate companies found for {city}. Please check the search terms.")
-        return
-
-    print(f"[*] Discovered {len(candidates)} potential candidates. Beginning verification and document inspection...\n")
+    print(f"[*] Initiating continuous public candidate discovery for {city} (Area: {area}, Industry: {industry})...")
+    candidate_gen = search_engine.iter_candidates(city=city, area=area, industry=industry)
 
     delivered_records: List[Dict[str, Any]] = []
     excluded_records: List[Dict[str, str]] = []
@@ -87,13 +81,18 @@ def run_pipeline(
 
     batch_no = 1
     current_batch: List[Dict[str, Any]] = []
+    candidate_idx = 0
 
-    for idx, candidate in enumerate(candidates, start=1):
+    for candidate in candidate_gen:
         domain = candidate["domain"]
         if domain in seen_domains:
             continue
         seen_domains.add(domain)
 
+        if len(delivered_records) >= count:
+            break
+
+        candidate_idx += 1
         print(f"[{len(delivered_records) + 1}/{count}] Inspecting: {candidate['title']} ({domain})...")
         record, exclusion, sources = processor.process_company(
             candidate=candidate,
@@ -112,11 +111,12 @@ def run_pipeline(
         if record:
             current_batch.append(record)
             delivered_records.append(record)
+            record["#"] = len(delivered_records)
             ic_status = "Found" if record["IC email ID"] != NOT_AVAILABLE or record["IC document / report link (POSH policy PDF, IC notice, annual report or BRSR where IC details appear)"] != NOT_AVAILABLE else "Not published online"
             print(f"   [+] Verified! IC Details: {ic_status} | Legal: {record['Legal form (Pvt Ltd / LLP / Listed / Not confirmed)']}")
 
         # Check if batch limit or total target reached
-        if len(current_batch) >= batch_size or len(delivered_records) >= count or idx == len(candidates):
+        if len(current_batch) >= batch_size or len(delivered_records) >= count:
             if current_batch:
                 file_path = exporter.export_batch(
                     new_companies=current_batch,
@@ -150,11 +150,24 @@ def run_pipeline(
                     print(f"[✓] Goal achieved: {len(delivered_records)} companies verified and exported.")
                     break
 
-                if not auto_continue and idx < len(candidates):
+                if not auto_continue:
                     resp = input("Type 'continue' to proceed to next batch, or 'stop' to finish:\n> ").strip().lower()
                     if resp == "stop":
                         print("Stopping as requested.")
                         break
+
+    # Flush any remaining unwritten companies if loop ended
+    if current_batch:
+        file_path = exporter.export_batch(
+            new_companies=current_batch,
+            area=area,
+            industry=industry,
+            target_rows=count,
+            batch_no=batch_no,
+            excluded_companies=excluded_records,
+            all_source_urls=all_source_urls
+        )
+        print(f"[✓] Final batch of {len(current_batch)} records saved to {file_path}")
 
     if len(delivered_records) < count:
         print(f"\n[i] Finished public search. Found {len(delivered_records)} qualifying companies out of {count} requested.")

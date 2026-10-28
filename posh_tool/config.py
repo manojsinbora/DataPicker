@@ -2,7 +2,7 @@
 Configuration and constants for POSH & Company Research Tool.
 """
 
-from typing import List
+from typing import List, Dict
 import re
 import warnings
 
@@ -65,28 +65,152 @@ HR_KEYWORDS = [
     "jobs"
 ]
 
-# Excluded business categories (per strict requirements)
-EXCLUSION_KEYWORDS = [
-    "coaching",
+# Excluded business categories (Strict rule: exclude coaching/training institutes, coworking, staffing agencies)
+# NOTE: Must use specific multi-word phrases to avoid false positives on words like "classes" (e.g. world-class, share classes)
+EXCLUSION_PHRASES = [
+    # Coaching & Tuition
+    "coaching classes",
+    "coaching institute",
+    "coaching center",
+    "coaching centre",
+    "tuition classes",
+    "tuition centre",
+    "tuition center",
+    "test preparation",
+    "competitive exam coaching",
+    "iit jee coaching",
+    "neet coaching",
+    "upsc coaching",
+    "ias academy",
+    "bank exam coaching",
+    "gate coaching",
+    "cat coaching",
+
+    # Training institutes & consultancies
     "training institute",
-    "training consultant",
-    "posh training",
-    "corporate training",
-    "training provider",
-    "tuition",
-    "test prep",
-    "classes",
-    "academy for exam",
+    "training academy",
+    "training center",
+    "training centre",
+    "corporate training provider",
+    "posh training consultancy",
+    "posh training services",
+    "corporate training firm",
+    "training consultancy",
+
+    # Coworking spaces
+    "coworking space",
+    "co-working space",
+    "shared office space",
+    "shared workspace",
+    "virtual office space",
+    "flexible workspace provider",
+    "managed office space",
+    "business center space",
+
+    # Staffing & Recruitment agencies
+    "recruitment agency",
+    "recruitment consultancy",
+    "recruitment consultant",
+    "staffing agency",
+    "staffing solutions",
+    "staffing firm",
+    "manpower consultancy",
+    "manpower services",
+    "placement consultancy",
+    "placement agency",
+    "job consultancy",
+    "headhunting firm",
+    "talent staffing firm"
+]
+
+# Domain-level exclusion patterns
+EXCLUDED_DOMAIN_KEYWORDS = [
+    "coaching",
     "coworking",
     "co-working",
-    "shared office",
-    "virtual office",
-    "staffing solutions",
-    "recruitment agency",
-    "manpower consultancy",
-    "placement consultant",
-    "placement agency"
+    "tuition",
+    "staffing",
+    "recruitment-agency",
+    "jobconsultancy"
 ]
+
+# Indian City Name Variations & Synonyms
+CITY_ALIASES: Dict[str, List[str]] = {
+    "bangalore": ["bangalore", "bengaluru", "blr"],
+    "bengaluru": ["bengaluru", "bangalore", "blr"],
+    "mumbai": ["mumbai", "bombay", "navi mumbai", "thane"],
+    "bombay": ["bombay", "mumbai", "navi mumbai", "thane"],
+    "delhi": ["delhi", "new delhi", "delhi ncr", "ncr", "noida", "gurgaon", "gurugram", "faridabad", "ghaziabad"],
+    "new delhi": ["new delhi", "delhi", "delhi ncr"],
+    "delhi ncr": ["delhi ncr", "delhi", "new delhi", "noida", "gurgaon", "gurugram", "faridabad", "ghaziabad"],
+    "gurgaon": ["gurgaon", "gurugram"],
+    "gurugram": ["gurugram", "gurgaon"],
+    "noida": ["noida", "greater noida", "delhi ncr"],
+    "pune": ["pune", "poona"],
+    "poona": ["poona", "pune"],
+    "hyderabad": ["hyderabad", "secunderabad", "cyberabad"],
+    "chennai": ["chennai", "madras"],
+    "madras": ["madras", "chennai"],
+    "kolkata": ["kolkata", "calcutta"],
+    "calcutta": ["calcutta", "kolkata"],
+    "ahmedabad": ["ahmedabad", "amdavad"],
+    "jaipur": ["jaipur", "pink city"],
+    "kochi": ["kochi", "cochin", "ernakulam"],
+    "cochin": ["cochin", "kochi", "ernakulam"],
+    "chandigarh": ["chandigarh", "mohali", "panchkula"],
+    "trivandrum": ["trivandrum", "thiruvananthapuram"],
+    "thiruvananthapuram": ["thiruvananthapuram", "trivandrum"],
+    "vadodara": ["vadodara", "baroda"],
+    "baroda": ["baroda", "vadodara"],
+    "indore": ["indore"]
+}
+
+# Major Indian city PIN code prefixes (first 3 digits)
+CITY_PIN_PREFIXES: Dict[str, List[str]] = {
+    "bangalore": ["560", "562"],
+    "bengaluru": ["560", "562"],
+    "mumbai": ["400", "401"],
+    "delhi": ["110"],
+    "new delhi": ["110"],
+    "delhi ncr": ["110", "122", "201", "121"],
+    "gurgaon": ["122"],
+    "gurugram": ["122"],
+    "noida": ["201"],
+    "pune": ["411", "412"],
+    "hyderabad": ["500", "501"],
+    "chennai": ["600"],
+    "kolkata": ["700", "711"],
+    "ahmedabad": ["380", "382"],
+    "jaipur": ["302"],
+    "kochi": ["682"],
+    "chandigarh": ["160"]
+}
+
+# Popular tech parks, clusters and localities by city (used to discover diverse companies)
+CITY_LOCALITIES: Dict[str, List[str]] = {
+    "bangalore": [
+        "Whitefield", "Electronic City", "Koramangala", "Indiranagar", "Manyata Tech Park",
+        "Outer Ring Road", "Bellandur", "HSR Layout", "Marathahalli", "Domlur", "Hebbal", "Peenya"
+    ],
+    "mumbai": [
+        "Bandra Kurla Complex", "BKC", "Andheri East", "Powai", "Lower Parel", "Nariman Point",
+        "Navi Mumbai", "Thane", "Goregaon East", "Malad Mindspace"
+    ],
+    "pune": [
+        "Hinjewadi", "Magarpatta", "Kharadi", "Viman Nagar", "Baner", "Senapati Bapat Road",
+        "Hadapsar", "Bhosari MIDC", "Chakan", "Aundh"
+    ],
+    "delhi ncr": [
+        "Cyber City Gurgaon", "Udyog Vihar", "Golf Course Road", "Noida Sector 62", "Noida Sector 125",
+        "Connaught Place", "Okhla Industrial Area", "Nehru Place"
+    ],
+    "hyderabad": [
+        "HITEC City", "Gachibowli", "Madhapur", "Financial District", "Jubilee Hills", "Banjara Hills"
+    ],
+    "chennai": [
+        "OMR", "Tidel Park", "Guindy", "T Nagar", "Sholinganallur", "Ambattur"
+    ]
+}
 
 # Regular expressions
 # STRICT RULE: Record a contact ONLY if it appears verbatim on a public page or document.
@@ -94,8 +218,6 @@ EXCLUSION_KEYWORDS = [
 EMAIL_REGEX = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b')
 
 # Indian Phone Numbers:
-# 1) Mobile numbers: starting with 6, 7, 8, or 9; 10 digits (optionally with +91 or 0)
-# 2) Landline numbers: STD code (2-4 digits starting with 0 or +91-city) followed by 6-8 digits
 PHONE_REGEX = re.compile(
     r'(?:(?:\+91[\-\s]?)|(?:\b0))?[6-9]\d{4}[\-\s]?\d{5}\b|'  # 10-digit mobile
     r'(?:\+91[\-\s]?)?(?:\b0\d{2,4}[\-\s]?)?\d{6,8}\b'         # Landlines

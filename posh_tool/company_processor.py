@@ -85,16 +85,16 @@ class CompanyProcessor:
 
         full_site_text = f"{home_text}\n{contact_text}"
 
-        # 6. Verify physical location in target city
-        city_lower = target_city.lower()
-        area_lower = target_area.lower() if target_area and target_area.lower() not in ["whole city", "any", "none"] else ""
-
-        city_matched = city_lower in full_site_text.lower()
-        area_matched = area_lower in full_site_text.lower() if area_lower else True
+        # 6. Verify physical location in target city using aliases & PIN prefixes
+        city_matched, area_matched = self.extractor.is_city_matched(
+            text=full_site_text,
+            target_city=target_city,
+            target_area=target_area
+        )
 
         if not city_matched:
             # Run targeted search to verify location
-            loc_search = self.search_engine.search(f'site:{domain} "{target_city}"', max_results=2)
+            loc_search = self.search_engine.search(f'site:{domain} ("{target_city}")', max_results=2)
             if loc_search:
                 city_matched = True
                 source_urls.append(loc_search[0]["href"])
@@ -102,7 +102,7 @@ class CompanyProcessor:
         if not city_matched:
             return None, {"name": company_name, "reason": f"No confirmed physical presence found in {target_city}"}, source_urls
 
-        if area_lower and not area_matched:
+        if not area_matched:
             return None, {"name": company_name, "reason": f"Presence in {target_city} confirmed, but not in specified area '{target_area}'"}, source_urls
 
         # 7. Extract Address with PIN
@@ -249,7 +249,7 @@ class CompanyProcessor:
         Derives real company name from copyright legal entity, og:site_name, title, or domain.
         """
         # 1. Try finding full legal name from footer/copyright
-        if home_text:
+        if home_text and isinstance(home_text, str):
             m = re.search(
                 r'(?:copyright|©)\s*(?:[0-9]{4})?\s*([A-Za-z0-9\s,\.\(\)&]{3,60}?(?:Pvt\.?\s*Ltd\.?|Private Limited|LLP|Limited|Ltd\.?))',
                 home_text,
@@ -261,20 +261,26 @@ class CompanyProcessor:
                     return legal
 
         # 2. Try og:site_name
-        if soup:
-            og_site = soup.find("meta", property="og:site_name")
-            if og_site and og_site.get("content"):
-                site_name = og_site["content"].strip()
-                if len(site_name) > 2:
-                    return site_name
+        if soup and hasattr(soup, "find"):
+            try:
+                og_site = soup.find("meta", property="og:site_name")
+                if og_site and og_site.get("content"):
+                    site_name = og_site["content"].strip()
+                    if len(site_name) > 2:
+                        return site_name
+            except Exception:
+                pass
 
             # Also check page title
-            if soup.title and soup.title.string:
-                title_parts = re.split(r'[\-|–|—|:\|]', soup.title.string)
-                for part in reversed(title_parts):
-                    p_clean = part.strip()
-                    if 2 < len(p_clean) < 40 and not any(w in p_clean.lower() for w in ["home", "official", "welcome", "about", "posh", "checklist", "policy"]):
-                        return p_clean
+            try:
+                if soup.title and soup.title.string:
+                    title_parts = re.split(r'[\-|–|—|:\|]', str(soup.title.string))
+                    for part in reversed(title_parts):
+                        p_clean = part.strip()
+                        if 2 < len(p_clean) < 40 and not any(w in p_clean.lower() for w in ["home", "official", "welcome", "about", "posh", "checklist", "policy"]):
+                            return p_clean
+            except Exception:
+                pass
 
         # 3. Fallback to snippet title cleaning
         clean = re.sub(r'[\-|–|—|:\|].*$', '', raw_title).strip()

@@ -174,25 +174,18 @@ class WebTaskManager:
             processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
             exporter = ExcelExporter(city=self.city)
 
-            self.log(f"Discovering public candidates via DuckDuckGo for {self.city}...")
-            candidates = search_engine.discover_companies(
+            self.log(f"Initiating continuous public discovery for {self.city} (Area: {self.area}, Industry: {self.industry})...")
+
+            candidate_gen = search_engine.iter_candidates(
                 city=self.city,
                 area=self.area,
-                industry=self.industry,
-                limit=self.target_count * 3
+                industry=self.industry
             )
 
-            if not candidates:
-                self.log(f"No candidate companies found for {self.city}. Try expanding search criteria.", level="warning")
-                with self.state_lock:
-                    self.status = "completed"
-                return
-
-            self.log(f"Discovered {len(candidates)} potential candidates. Verifying criteria and checking documents...")
-
             seen_domains = set()
+            candidate_idx = 0
 
-            for idx, candidate in enumerate(candidates, start=1):
+            for candidate in candidate_gen:
                 if self.stop_requested:
                     self.log("Pipeline stopped by user.", level="warning")
                     break
@@ -209,6 +202,7 @@ class WebTaskManager:
                     self.log(f"Target count of {self.target_count} companies reached!")
                     break
 
+                candidate_idx += 1
                 self.log(f"[{current_count + 1}/{self.target_count}] Checking: {candidate['title']} ({domain})...")
 
                 record, exclusion, sources = processor.process_company(
@@ -233,14 +227,13 @@ class WebTaskManager:
                         self.current_batch.append(record)
                         self.companies.append(record)
                         record["#"] = len(self.companies)
-                        current_total = len(self.companies)
 
                     ic_found = record["IC email ID"] != NOT_AVAILABLE or record["IC document / report link (POSH policy PDF, IC notice, annual report or BRSR where IC details appear)"] != NOT_AVAILABLE
                     status_text = "POSH/IC details published" if ic_found else "No online IC published (marked 'Not available')"
                     self.log(f"[+] Verified company: {record['Company name']} ({record['Legal form (Pvt Ltd / LLP / Listed / Not confirmed)']}) - {status_text}", level="success")
 
                 # Check batch limit or completion
-                if len(self.current_batch) >= self.batch_size or len(self.companies) >= self.target_count or idx == len(candidates):
+                if len(self.current_batch) >= self.batch_size or len(self.companies) >= self.target_count:
                     if self.current_batch:
                         # Write to Excel
                         saved_path = exporter.export_batch(
@@ -262,7 +255,7 @@ class WebTaskManager:
                             self.log(f"All {self.target_count} requested companies successfully verified and compiled into {exporter.filename}!", level="success")
                             break
 
-                        if not self.auto_continue and idx < len(candidates):
+                        if not self.auto_continue:
                             with self.state_lock:
                                 self.status = "paused"
                             self.log(f"Batch {self.batch_no - 1} complete. Paused. Click 'Continue Next Batch' or enable Auto-Continue to proceed.", level="warning")
@@ -271,6 +264,21 @@ class WebTaskManager:
                             while self.status == "paused" and not self.stop_requested:
                                 time.sleep(0.5)
 
+            # Flush any remaining unwritten companies if loop ended
+            if self.current_batch:
+                saved_path = exporter.export_batch(
+                    new_companies=self.current_batch,
+                    area=self.area,
+                    industry=self.industry,
+                    target_rows=self.target_count,
+                    batch_no=self.batch_no,
+                    excluded_companies=self.excluded,
+                    all_source_urls=self.sources
+                )
+                self.log(f"Final batch exported to Excel: {os.path.basename(saved_path)}", level="success")
+                with self.state_lock:
+                    self.current_batch = []
+
             with self.state_lock:
                 if not self.stop_requested:
                     self.status = "completed"
@@ -278,9 +286,16 @@ class WebTaskManager:
                     self.status = "stopped"
             
             if not self.stop_requested:
-                self.log("POSH research workflow complete! File ready for download.", level="success")
+                self.log(f"Research workflow complete! Verified {len(self.companies)} qualifying companies. File ready for download.", level="success")
             else:
                 self.log("POSH research workflow stopped.", level="warning")
+
+        except Exception as e:
+            logger.exception("Error in research task")
+            with self.state_lock:
+                self.status = "error"
+                self.error_message = str(e)
+            self.log(f"Unexpected error: {e}", level="error")
 
         except Exception as e:
             logger.exception("Error in research task")

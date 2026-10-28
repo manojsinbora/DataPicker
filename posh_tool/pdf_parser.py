@@ -169,9 +169,9 @@ class PDFDocumentParser:
                     if not found_ic_phone:
                         found_ic_phone = ph.strip()
 
-            # Look for Presiding Officer
+            # Look for Presiding Officer (as published, including honorific if present)
             po_match = re.search(
-                r'presiding\s+officer[\s:\-–—]+(?:ms\.|mrs\.|dr\.|mr\.)?\s*([A-Za-z\.\s]{3,35})(?:\n|,|\(|\-)',
+                r'presiding\s+officer[\s:\-–—]+((?:(?:Ms\.|Mrs\.|Dr\.|Mr\.|Adv\.)\s+)?[A-Z][A-Za-z\.\s]{2,30}?)(?:\n|,|\(|\-|\bat\b|\bemail\b|$)',
                 text,
                 re.IGNORECASE
             )
@@ -180,7 +180,7 @@ class PDFDocumentParser:
 
             # Look for External Member
             ext_match = re.search(
-                r'external\s+member[\s:\-–—]+(?:ms\.|mrs\.|dr\.|mr\.)?\s*([A-Za-z\.\s]{3,35})(?:\n|,|\(|\-)',
+                r'external\s+member[\s:\-–—]+((?:(?:Ms\.|Mrs\.|Dr\.|Mr\.|Adv\.)\s+)?[A-Z][A-Za-z\.\s]{2,30}?)(?:\n|,|\(|\-|\bat\b|\bemail\b|$)',
                 text,
                 re.IGNORECASE
             )
