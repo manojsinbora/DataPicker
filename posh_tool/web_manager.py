@@ -170,7 +170,9 @@ class WebTaskManager:
     def _worker_loop(self):
         exporter = ExcelExporter(city=self.city)
         try:
-            search_engine = SearchEngine()
+            search_engine = SearchEngine(
+                on_engine_fallback=lambda msg: self.log(msg, level="info")
+            )
             scraper = WebScraper()
             processor = CompanyProcessor(search_engine=search_engine, scraper=scraper)
 
@@ -189,6 +191,7 @@ class WebTaskManager:
                 self.excel_filename = exporter.filename
 
             self.log(f"Initiating continuous public discovery for {self.city} (Area: {self.area}, Industry: {self.industry})...")
+            self.log("Multi-engine cascading public search active: DuckDuckGo -> Bing -> Yahoo -> Google -> SearXNG (100% zero-paid compliance).")
             self.log(f"Initialized output file: {exporter.filename} (ready for instant download)")
 
             candidate_gen = search_engine.iter_candidates(
