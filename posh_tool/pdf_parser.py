@@ -8,7 +8,7 @@ import re
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 
-from .config import EMAIL_REGEX, PHONE_REGEX, NOT_AVAILABLE
+from .config import EMAIL_REGEX, PHONE_REGEX, is_valid_indian_phone, NOT_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -161,13 +161,13 @@ class PDFDocumentParser:
                 elif not found_ic_email and not any(k in em_lower for k in ["sales", "info", "support", "careers", "press"]):
                     found_ic_email = em
 
-            # Extract Phones on this page
+            # Extract Phones on this page (strictly valid Indian numbers)
             phones = PHONE_REGEX.findall(text)
             for ph in phones:
-                cleaned_ph = re.sub(r'[\s\-]', '', ph)
-                if len(cleaned_ph) >= 10:
+                ph_clean = ph.strip(" .,;:-")
+                if is_valid_indian_phone(ph_clean):
                     if not found_ic_phone:
-                        found_ic_phone = ph.strip()
+                        found_ic_phone = ph_clean
 
             # Look for Presiding Officer (as published, including honorific if present)
             po_match = re.search(

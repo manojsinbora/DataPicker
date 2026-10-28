@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from urllib.parse import urlparse, urljoin
 from datetime import datetime
 
-from .config import NOT_AVAILABLE
+from .config import NOT_AVAILABLE, is_valid_indian_phone, classify_indian_phone
 from .search_engine import SearchEngine
 from .scraper import WebScraper
 from .pdf_parser import PDFDocumentParser
@@ -120,8 +120,14 @@ class CompanyProcessor:
             else:
                 employee_evidence = "Corporate entity operations confirmed on company site"
 
-        # 10. General Company Contacts
-        company_phone, company_email = self.extractor.extract_company_contacts(contact_text or home_text)
+        # 10. General Company Contacts (strictly validated Indian numbers, prefer target city landline)
+        company_phone, company_email = self.extractor.extract_company_contacts(contact_text or home_text, target_city=target_city)
+        if company_phone != NOT_AVAILABLE:
+            if not is_valid_indian_phone(company_phone):
+                company_phone = NOT_AVAILABLE
+            else:
+                phone_type = classify_indian_phone(company_phone, target_city)
+                notes.append(f"Company phone is {phone_type}")
 
         # 11. HR Contacts
         hr_name = NOT_AVAILABLE
@@ -138,6 +144,8 @@ class CompanyProcessor:
 
         if hr_text:
             hr_name, hr_email, hr_phone = self.extractor.extract_hr_contacts(hr_text)
+            if hr_phone != NOT_AVAILABLE and not is_valid_indian_phone(hr_phone):
+                hr_phone = NOT_AVAILABLE
         if hr_email == NOT_AVAILABLE and company_email != NOT_AVAILABLE and "hr" in company_email.lower():
             hr_email = company_email
 
@@ -211,6 +219,14 @@ class CompanyProcessor:
                     if ic_phone == NOT_AVAILABLE and posh_res["ic_phone"] != NOT_AVAILABLE:
                         ic_phone = posh_res["ic_phone"]
                     break
+
+        # Final defensive check on all contact numbers
+        if ic_phone != NOT_AVAILABLE and not is_valid_indian_phone(ic_phone):
+            ic_phone = NOT_AVAILABLE
+        if hr_phone != NOT_AVAILABLE and not is_valid_indian_phone(hr_phone):
+            hr_phone = NOT_AVAILABLE
+        if company_phone != NOT_AVAILABLE and not is_valid_indian_phone(company_phone):
+            company_phone = NOT_AVAILABLE
 
         if not notes:
             notes_str = NOT_AVAILABLE

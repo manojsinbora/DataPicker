@@ -212,16 +212,193 @@ CITY_LOCALITIES: Dict[str, List[str]] = {
     ]
 }
 
+# Major Indian city STD codes (without trunk 0 and with trunk 0)
+CITY_STD_CODES: Dict[str, List[str]] = {
+    "bangalore": ["80", "080"],
+    "bengaluru": ["80", "080"],
+    "mumbai": ["22", "022"],
+    "bombay": ["22", "022"],
+    "delhi": ["11", "011"],
+    "new delhi": ["11", "011"],
+    "delhi ncr": ["11", "011", "120", "0120", "124", "0124", "129", "0129"],
+    "gurgaon": ["124", "0124"],
+    "gurugram": ["124", "0124"],
+    "noida": ["120", "0120"],
+    "pune": ["20", "020"],
+    "hyderabad": ["40", "040"],
+    "chennai": ["44", "044"],
+    "kolkata": ["33", "033"],
+    "ahmedabad": ["79", "079"],
+    "jaipur": ["141", "0141"],
+    "kochi": ["484", "0484"],
+    "chandigarh": ["172", "0172"],
+    "indore": ["731", "0731"],
+    "coimbatore": ["422", "0422"],
+    "lucknow": ["522", "0522"],
+    "nagpur": ["712", "0712"],
+    "vadodara": ["265", "0265"],
+    "surat": ["261", "0261"],
+    "visakhapatnam": ["891", "0891"],
+    "patna": ["612", "0612"],
+    "bhopal": ["755", "0755"]
+}
+
 # Regular expressions
 # STRICT RULE: Record a contact ONLY if it appears verbatim on a public page or document.
 # Never guess, construct, or pattern-match (e.g., do not assume posh@company.com or hr@company.com).
 EMAIL_REGEX = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b')
 
-# Indian Phone Numbers:
+# Indian Phone Numbers Regex (strictly validated per Department of Telecommunications NNP)
+# Matches:
+# 1. +91 or 0091 prefixed numbers (mobile, landline, toll-free)
+# 2. National Toll-Free / Shared-Cost numbers (1800, 1860)
+# 3. Landlines with explicit STD code (e.g. 080-..., 011 ..., (080) ..., 0124-...)
+# 4. Standard 10-digit Indian mobiles (starting with 6, 7, 8, or 9, optional leading 0)
 PHONE_REGEX = re.compile(
-    r'(?:(?:\+91[\-\s]?)|(?:\b0))?[6-9]\d{4}[\-\s]?\d{5}\b|'  # 10-digit mobile
-    r'(?:\+91[\-\s]?)?(?:\b0\d{2,4}[\-\s]?)?\d{6,8}\b'         # Landlines
+    r'(?:'
+    r'(?:\+91[\-\s\.]?(?:\([0-9]+\)[\-\s\.]?)?|\b0091[\-\s\.]?)'
+    r'(?:1800|1860|[1-9]\d{1,4})[\-\s\.]?\d{2,4}[\-\s\.]?\d{3,4}\b'
+    r'|'
+    r'\b(?:1800|1860)[\-\s\.]?\d{3,4}[\-\s\.]?\d{3,4}\b'
+    r'|'
+    r'(?:\b0\d{1,4}[\-\s\.]|\(\s*0\d{1,4}\s*\)[\-\s\.]?)\d{3,4}[\-\s\.]?\d{3,4}\b'
+    r'|'
+    r'(?:\b0)?[6-9]\d{4}[\-\s\.]?\d{5}\b'
+    r')'
 )
+
+def is_valid_indian_phone(phone_str: str) -> bool:
+    """
+    Validates whether a phone number complies with the Department of Telecommunications
+    (DoT) National Numbering Plan (NNP) of India.
+
+    Accepts:
+    1. 10-digit Indian Mobile Numbers starting with 6, 7, 8, or 9 (with optional +91, 0091, or leading 0).
+    2. Indian Landlines with STD Code (total 10 digits without 0/91, subscriber starting with 2-8).
+    3. Indian Toll-Free (1800) and Shared-Cost (1860) numbers (10 or 11 digits).
+
+    Rejects:
+    - 6-digit Indian PIN codes (e.g. 560001, 110001).
+    - Bare 8-digit numbers without STD code (e.g. 12345678, 41123456).
+    - Invalid mobile numbers starting with 0-5.
+    - Repetitive dummy numbers (e.g. 9999999999, 0000000000).
+    - Foreign numbers with foreign country codes (e.g. +1, +44).
+    - Date ranges, years, or alphanumeric sequences.
+    """
+    if not phone_str or not isinstance(phone_str, str):
+        return False
+
+    raw = phone_str.strip()
+
+    # Strip any trailing sentence punctuation
+    raw = re.sub(r'[\.,;:\-\s]+$', '', raw)
+
+    # Check for foreign country codes (e.g. +1, +44, +65, etc. where not +91)
+    if raw.startswith('+') and not raw.startswith('+91'):
+        return False
+
+    # Strip optional extension for core number validation (e.g. "Ext. 102", "x123")
+    core = re.sub(r'(?i)\s*(?:ext|x|extension)\.?\s*\d+', '', raw)
+
+    # Extract only digits
+    digits = re.sub(r'\D', '', core)
+
+    # Handle country code (+91 or 0091)
+    if digits.startswith('0091'):
+        digits = digits[4:]
+    elif digits.startswith('91') and len(digits) in (12, 13):
+        # 91 + 10 digits = 12 digits (mobile or landline)
+        # 91 + 11 digits = 13 digits (toll-free like 9118001234567)
+        digits = digits[2:]
+
+    # Handle trunk prefix 0
+    if digits.startswith('0') and len(digits) in (11, 12):
+        digits = digits[1:]
+
+    # Check dummy / placeholder numbers (all identical digits, e.g. 9999999999, 0000000000)
+    if len(set(digits)) <= 1:
+        return False
+
+    # 1. Toll-Free / Shared-Cost numbers (1800, 1860)
+    if digits.startswith(('1800', '1860')):
+        if len(digits) in (10, 11):
+            return True
+        return False
+
+    # Standard Indian mobile and landline numbers must have NSN length of exactly 10 digits
+    if len(digits) != 10:
+        return False
+
+    # 2. Indian Mobile Numbers:
+    # Must start with 6, 7, 8, or 9
+    if digits[0] in ('6', '7', '8', '9'):
+        return True
+
+    # 3. Indian Landlines with STD Code:
+    # Landlines must have an explicit STD code indicator in the raw text:
+    # (+91, leading 0, or area code in parentheses or with hyphen/space)
+    has_explicit_prefix = bool(
+        raw.startswith('+91') or 
+        raw.startswith('0') or 
+        re.search(r'\b0\d{1,4}[\-\s\.]', raw) or 
+        re.search(r'\(\s*0?\d{1,4}\s*\)', raw)
+    )
+
+    if has_explicit_prefix:
+        # Tier 1: 2-digit STD (11, 20, 22, 33, 40, 44, 79, 80) + 8-digit subscriber (starts 2-8)
+        if digits[:2] in ('11', '20', '22', '33', '40', '44', '79', '80'):
+            if digits[2] in '2345678':
+                return True
+        # Tier 2: 3-digit STD (e.g. 120, 124, 141, 172, 484, 522, etc.) + 7-digit subscriber (starts 2-8)
+        if digits[0] in '12345678' and digits[3] in '2345678':
+            return True
+        # Tier 3/4: 4-digit STD + 6-digit subscriber (starts 2-8)
+        if digits[0] in '12345678' and digits[4] in '2345678':
+            return True
+
+    return False
+
+def classify_indian_phone(phone_str: str, target_city: str = "") -> str:
+    """
+    Classifies a valid Indian phone number into its functional category:
+    - Target city office landline (preferred over toll-free as required by prompt)
+    - National toll-free number
+    - National shared-cost number
+    - Indian mobile number
+    - Landline with STD code
+    """
+    if not is_valid_indian_phone(phone_str):
+        return "Invalid or unconfirmed phone number"
+
+    raw = phone_str.strip()
+    digits = re.sub(r'\D', '', raw)
+
+    # Toll-free & shared-cost
+    if digits.startswith(('1800', '911800', '01800')):
+        return "National toll-free number"
+    if digits.startswith(('1860', '911860', '01860')):
+        return "National shared-cost number"
+
+    # Check target city STD match
+    if target_city:
+        city_key = target_city.lower().strip()
+        matched_stds = CITY_STD_CODES.get(city_key, [])
+        for std in matched_stds:
+            if std in raw or digits.startswith(('91' + std, '0' + std, std)):
+                return f"{target_city.title()} office landline"
+
+    # Normalize digits for mobile check
+    if digits.startswith('0091'):
+        digits = digits[4:]
+    elif digits.startswith('91') and len(digits) == 12:
+        digits = digits[2:]
+    if digits.startswith('0') and len(digits) == 11:
+        digits = digits[1:]
+
+    if len(digits) == 10 and digits[0] in '6789':
+        return "Indian mobile number"
+
+    return "Landline with STD code"
 
 # Indian 6-digit PIN code (ranges 110001 to 899999)
 PIN_CODE_REGEX = re.compile(r'\b([1-9][0-9]{5})\b')

@@ -113,6 +113,21 @@ class TestDataExtractor(unittest.TestCase):
         self.assertEqual(email, "info@alphacorp.in")
         self.assertIn("41123456", phone)
 
+    def test_extract_company_contacts_prioritizes_city_landline(self):
+        """Verify prompt rule: prefer target city office number over national toll-free number where both exist."""
+        text = "National Toll Free: 1800 123 4567 | Bengaluru Office: +91 80 41123456 | Email: hello@alphacorp.in"
+        phone, email = self.extractor.extract_company_contacts(text, target_city="Bangalore")
+        self.assertEqual(email, "hello@alphacorp.in")
+        self.assertIn("41123456", phone)
+        self.assertNotIn("1800", phone)
+
+    def test_extract_company_contacts_rejects_pin_and_bare_numbers(self):
+        """Verify that PIN codes, year strings, and bare numbers are never extracted as phone numbers."""
+        text = "Registered Office: Whitefield, Bangalore 560066. Financial Report: 2024-2025. Reg: 12345678. Email: contact@corp.in"
+        phone, email = self.extractor.extract_company_contacts(text, target_city="Bangalore")
+        self.assertEqual(email, "contact@corp.in")
+        self.assertEqual(phone, "Not available")
+
     def test_extract_hr_contacts(self):
         """Test verbatim extraction of HR contact details."""
         text = "For recruitment queries, contact Chief People Officer: Priya Sharma at careers@alphacorp.in or call +91 9845012345."
@@ -120,6 +135,14 @@ class TestDataExtractor(unittest.TestCase):
         self.assertEqual(hr_name, "Priya Sharma")
         self.assertEqual(hr_email, "careers@alphacorp.in")
         self.assertIn("9845012345", hr_phone)
+
+    def test_extract_hr_contacts_rejects_invalid_phone(self):
+        """Verify HR phone rejects invalid numbers."""
+        text = "Contact HR: Priya Sharma at careers@alphacorp.in or dial 12345678."
+        hr_name, hr_email, hr_phone = self.extractor.extract_hr_contacts(text)
+        self.assertEqual(hr_name, "Priya Sharma")
+        self.assertEqual(hr_email, "careers@alphacorp.in")
+        self.assertEqual(hr_phone, "Not available")
 
     def test_extract_posh_from_html(self):
         """Test POSH policy details extraction from HTML text."""

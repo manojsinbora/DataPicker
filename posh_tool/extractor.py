@@ -12,6 +12,9 @@ from bs4 import BeautifulSoup
 from .config import (
     EMAIL_REGEX,
     PHONE_REGEX,
+    is_valid_indian_phone,
+    classify_indian_phone,
+    CITY_STD_CODES,
     PIN_CODE_REGEX,
     EMPLOYEE_COUNT_REGEX,
     EXCLUSION_PHRASES,
@@ -173,9 +176,11 @@ class DataExtractor:
 
         return NOT_AVAILABLE
 
-    def extract_company_contacts(self, text: str, soup: Optional[BeautifulSoup] = None) -> Tuple[str, str]:
+    def extract_company_contacts(self, text: str, soup: Optional[BeautifulSoup] = None, target_city: str = "") -> Tuple[str, str]:
         """
         Extracts public company phone number and public email ID verbatim.
+        Ensures phone number is a strictly valid Indian phone number.
+        Prefers target city office landlines over national toll-free numbers where both exist.
         """
         phone = NOT_AVAILABLE
         email = NOT_AVAILABLE
@@ -193,19 +198,34 @@ class DataExtractor:
                     email = em
                     break
 
-        # Extract phone
+        # Extract strictly valid Indian phone numbers
         phones = PHONE_REGEX.findall(text)
+        valid_phones: List[str] = []
         for ph in phones:
-            cleaned = re.sub(r'[\s\-]', '', ph)
-            if len(cleaned) >= 8:
-                phone = ph.strip()
-                break
+            ph_clean = ph.strip(" .,;:-")
+            if is_valid_indian_phone(ph_clean):
+                if ph_clean not in valid_phones:
+                    valid_phones.append(ph_clean)
+
+        if valid_phones:
+            # Prefer target city office landline over toll-free as required by prompt
+            chosen_phone = None
+            if target_city:
+                for vp in valid_phones:
+                    classification = classify_indian_phone(vp, target_city)
+                    if "office landline" in classification:
+                        chosen_phone = vp
+                        break
+            if not chosen_phone:
+                chosen_phone = valid_phones[0]
+            phone = chosen_phone
 
         return phone, email
 
     def extract_hr_contacts(self, text: str) -> Tuple[str, str, str]:
         """
         Extracts HR contact name, email ID, and phone number verbatim.
+        Ensures HR phone number is a strictly valid Indian phone number.
         """
         hr_name = NOT_AVAILABLE
         hr_email = NOT_AVAILABLE
@@ -220,9 +240,9 @@ class DataExtractor:
 
         phones = PHONE_REGEX.findall(text)
         for ph in phones:
-            cleaned = re.sub(r'[\s\-]', '', ph)
-            if len(cleaned) >= 8:
-                hr_phone = ph.strip()
+            ph_clean = ph.strip(" .,;:-")
+            if is_valid_indian_phone(ph_clean):
+                hr_phone = ph_clean
                 break
 
         # Look for HR Name
@@ -241,6 +261,7 @@ class DataExtractor:
     def extract_posh_from_html(self, text: str, url: str) -> Dict[str, Any]:
         """
         Extracts POSH / IC details directly from an HTML policy page.
+        Ensures IC phone number is a strictly valid Indian phone number.
         """
         res = {
             "ic_found": False,
@@ -278,12 +299,12 @@ class DataExtractor:
         if res["ic_email"] == NOT_AVAILABLE and emails:
             res["ic_email"] = emails[0]
 
-        # Phones
+        # Phones (strictly valid Indian numbers)
         phones = PHONE_REGEX.findall(text)
         for ph in phones:
-            cleaned = re.sub(r'[\s\-]', '', ph)
-            if len(cleaned) >= 8:
-                res["ic_phone"] = ph.strip()
+            ph_clean = ph.strip(" .,;:-")
+            if is_valid_indian_phone(ph_clean):
+                res["ic_phone"] = ph_clean
                 break
 
         return res
